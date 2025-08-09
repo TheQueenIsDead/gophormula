@@ -26,3 +26,4 @@ Currently under active development, Gophormula is a
 
  - [Car Data](https://livetiming.formula1.com/static/2021/2021-04-18_Emilia_Romagna_Grand_Prix/2021-04-18_Race/CarData.z.jsonStream)
  - [Car Data Decompression](https://github.com/theOehrly/Fast-F1/issues/24)
+ - [ASP Net SignalR Specification](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md)
