@@ -19,8 +19,6 @@ const (
 
 func GetLiveTimingFile[T any](url *url.URL, out *T) error {
 
-	fmt.Println("getting")
-
 	// HTTP GET the file
 	res, err := http.Get(url.String())
 	if err != nil || res.StatusCode != 200 {
@@ -59,6 +57,12 @@ func main() {
 		panic(err)
 	}
 
+	err = os.MkdirAll(strings.ReplaceAll(out+base.Path, "static/", ""), 0750)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Retrieving index...")
 	var index livetiming.Index
 	err = GetLiveTimingFile(base.JoinPath("Index.json"), &index)
 	if err != nil {
@@ -67,11 +71,15 @@ func main() {
 
 	var files []*url.URL
 	for _, feed := range index.GetFeeds() {
-		files = append(files, base.JoinPath(feed.KeyFramePath))
-		files = append(files, base.JoinPath(feed.StreamPath))
+		if feed.KeyFramePath != "" {
+			files = append(files, base.JoinPath(feed.KeyFramePath))
+		}
+		if feed.StreamPath != "" {
+			files = append(files, base.JoinPath(feed.StreamPath))
+		}
 	}
-	fmt.Println(index.String())
 
+	fmt.Println("Retrieving race files...")
 	var wg sync.WaitGroup
 	for _, file := range files {
 		wg.Add(1)
@@ -95,7 +103,7 @@ func main() {
 			path := strings.ReplaceAll(out+res.Request.URL.Path, "static/", "")
 			f, err := os.Create(path)
 			if err != nil {
-				fmt.Println("unable to create file")
+				fmt.Println("unable to create file:", path, file)
 			}
 			defer f.Close()
 			_, err = f.Write(body)
@@ -105,4 +113,5 @@ func main() {
 		}()
 	}
 	wg.Wait()
+	fmt.Println("Race files saved.")
 }
