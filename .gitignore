@@ -1,2 +1,4 @@
 .idea/
-*.z.jsonStream
+data/**/*.z.jsonStream
+data/**/*.jsonStream
+data/**/*.json
