@@ -5,6 +5,7 @@ Currently under active development, Gophormula is a
 ## Roadmap
 
  - [ ] Locate and parse historic data streams
+   - [ ] Implement custom json unmarshalling for structs with dynamic tags (Ie, keyed by driver number) 
  - [ ] Create a SignalR server to stream historic data
  - [ ] Create a SignalR client to receive historic data
  - [ ] Locate and parse the race calendar to determine the next race
