@@ -20,7 +20,8 @@ const (
 func Parse(r io.Reader) ([]string, error) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		_, _, err := parseLine(scanner.Text())
+		_, l, err := parseLine(scanner.Text())
+		fmt.Println(*l)
 		if err != nil {
 			return nil, err
 		}
