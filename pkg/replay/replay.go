@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
+	"gophormula/pkg/livetiming"
 	"io"
 	"log"
 	"os"
@@ -60,15 +62,25 @@ func (r *Replayer) broadcast(message any) {
 	}
 }
 
+// FIXME: Need to account for stream data starting at different times in different files
 func (r *Replayer) Start() {
 	for _, file := range r.files {
-		scanner := bufio.NewScanner(&file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			r.broadcast(line)
-			// FIXME: Need to remove this in place of logic that pauses at appropriate times to simulate replay
-			time.Sleep(1 * time.Millisecond)
-		}
+		go func() {
+			scanner := bufio.NewScanner(&file)
+			for scanner.Scan() {
+				line := scanner.Text()
+				_, data, err := livetiming.ParseLine(line)
+				if err != nil {
+					log.Println("decode error", err, line, file.Name())
+					// TODO: Remove this, convenient to crash and debug while developing
+					log.Fatal(err)
+				}
+				fmt.Println(*data)
+				r.broadcast(line)
+				// FIXME: Need to remove this in place of logic that pauses at appropriate times to simulate replay
+				time.Sleep(1 * time.Second)
+			}
+		}()
 	}
 }
 
