@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type DriverScoreKey struct {
 	Category string `json:"Category"`

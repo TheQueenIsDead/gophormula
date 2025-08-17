@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type SessionStatus struct {
 	Status  string `json:"Status"`

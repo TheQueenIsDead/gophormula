@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type Stint struct {
 	LapTime         string `json:"LapTime"`

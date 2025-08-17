@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type Interval struct {
 	Value    string `json:"Value"`
