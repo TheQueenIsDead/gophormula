@@ -34,7 +34,9 @@ func (r *Replayer) ParseGlob(glob string) error {
 	}
 
 	for _, match := range matches {
-		if strings.HasPrefix(match, ".") {
+		matchIsHiddenFile := strings.HasSuffix(match, ".")
+		matchIsIndex := match == "Index.json"
+		if matchIsHiddenFile || matchIsIndex {
 			continue
 		}
 
