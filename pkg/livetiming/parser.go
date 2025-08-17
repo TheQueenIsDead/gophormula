@@ -5,8 +5,12 @@ import (
 	"bytes"
 	"compress/flate"
 	"encoding/base64"
-	"fmt"
+	"encoding/json"
+	"errors"
 	"io"
+	"log"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -20,8 +24,8 @@ const (
 func Parse(r io.Reader) ([]string, error) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		_, l, err := parseLine(scanner.Text())
-		fmt.Println(*l)
+		_, l, err := ParseLine(scanner.Text())
+		log.Printf("%v\n", l)
 		if err != nil {
 			return nil, err
 		}
@@ -29,63 +33,66 @@ func Parse(r io.Reader) ([]string, error) {
 	return nil, nil
 }
 
-// parseLine takes a line from a *.z.jsonStream file and returns the decoded data.
-// A line is expected to have the following structure:
-// 00:00:03.712"base64encode(flateCompress(data))"
-func parseLine(line string) (*time.Time, *string, error) {
+func ParseLine(line string) (*time.Time, *string, error) {
 
 	// Sanitise the line to remove incorrectly appended UTF-8 BOM's
 	line = strings.ToValidUTF8(line, "")
 	line = strings.Replace(line, "\xEF\xBB\xBF", "", -1)
 
-	// Split the string on quotes to parse out the following parts
-	// 0 - Interval
-	// 1 - Message
-	// 2 - Empty String
-	parts := strings.Split(line, "\"")
-	if len(parts) != 3 {
-		return nil, nil, fmt.Errorf("invalid line: %s", line)
-	}
-	intervalData, messageData := parts[0], parts[1]
-
-	interval, err := parseInterval(intervalData)
-	if err != nil {
-		fmt.Printf("%x\n", []byte(intervalData))
-		fmt.Printf("%s\n", []byte(intervalData))
-		fmt.Println(err)
-		return nil, nil, fmt.Errorf("invalid interval: %s", intervalData)
+	// Check if there is a timestamp at the beginning of the line, else use now
+	twelve := line[:min(len(line), 12)]
+	timestamp, tsErr := time.Parse(IntervalTimeFormat, twelve)
+	if tsErr != nil {
+		timestamp = time.Now()
 	}
 
-	message, err := parseMessage(messageData)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid message: %s", messageData)
+	// If the ts was valid, remove it from the line
+	if tsErr == nil {
+		line = line[min(len(line), 12):]
 	}
 
-	return &interval, &message, nil
-}
+	// If the start of the line is not JSON compliant, assume compressed
+	if line[0] != '{' {
 
-func parseInterval(interval string) (time.Time, error) {
-	return time.Parse(IntervalTimeFormat, interval)
-}
-
-func parseMessage(message string) (string, error) {
-
-	decoded, err := base64.StdEncoding.DecodeString(message)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode base64 string: %v\n", err)
-	}
-
-	r := flate.NewReader(bytes.NewReader(decoded))
-	defer func(r io.ReadCloser) {
-		err := r.Close()
+		compressed := strings.ReplaceAll(line, "\"", "")
+		decoded, err := base64.StdEncoding.DecodeString(compressed)
 		if err != nil {
-			panic(err)
+			log.Printf("failed to decode base64 string: %v\n", err)
+			log.Printf("line: %v\n", line)
+			return nil, nil, err
 		}
-	}(r)
-	var out bytes.Buffer
-	if _, err := out.ReadFrom(r); err != nil {
-		return "", fmt.Errorf("flate decompress error: %v\n", err)
+
+		r := flate.NewReader(bytes.NewReader(decoded))
+		defer func(r io.ReadCloser) {
+			err := r.Close()
+			if err != nil {
+				log.Printf("failed to close reader: %v\n", err)
+				panic(err)
+			}
+		}(r)
+		var out bytes.Buffer
+		if _, err := out.ReadFrom(r); err != nil {
+			log.Println("flate decompress error", err)
+			return nil, nil, err
+		}
+		line = out.String()
 	}
 
-	return out.String(), nil
+	// Attempt to json decode the payload
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		log.Println(err)
+		return nil, nil, err
+	}
+
+	// TODO: Once we know the keys, marshal into the corresponding struct. Currently WIP
+	keySeq := maps.Keys(payload)
+	keyArr := slices.Collect(keySeq)
+	if len(keyArr) == 0 {
+		return nil, nil, errors.New("no json keys found")
+	}
+	keys := strings.Join(keyArr, "-")
+
+	return &timestamp, &keys, nil
+
 }
