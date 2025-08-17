@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type DriverRaceInfoEntry struct {
 	RacingNumber  string `json:"RacingNumber"`

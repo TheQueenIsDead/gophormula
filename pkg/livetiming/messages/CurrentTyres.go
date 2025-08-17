@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type Tyre struct {
 	Compound string `json:"Compound"`

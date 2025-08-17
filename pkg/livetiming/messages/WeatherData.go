@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type WeatherData struct {
 	AirTemp       string `json:"AirTemp"`

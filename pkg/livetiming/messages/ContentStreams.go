@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type ContentStreams struct {
 	Streams []struct {

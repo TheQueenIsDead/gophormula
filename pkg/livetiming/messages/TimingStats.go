@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type Best struct {
 	Position int    `json:"Position"`

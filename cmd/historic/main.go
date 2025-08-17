@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gophormula/pkg/livetiming"
+	"gophormula/pkg/livetiming/messages"
 	"io"
 	"net/http"
 	"net/url"
@@ -63,7 +63,7 @@ func main() {
 	}
 
 	fmt.Println("Retrieving index...")
-	var index livetiming.Index
+	var index messages.Index
 	err = GetLiveTimingFile(base.JoinPath("Index.json"), &index)
 	if err != nil {
 		panic(err)

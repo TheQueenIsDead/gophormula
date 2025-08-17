@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type LapCount struct {
 	CurrentLap int `json:"CurrentLap"`

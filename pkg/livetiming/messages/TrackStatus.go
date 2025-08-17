@@ -1,4 +1,4 @@
-package livetiming
+package messages
 
 type TrackStatus struct {
 	Status  string `json:"Status"`
