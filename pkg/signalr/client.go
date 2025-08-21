@@ -3,7 +3,6 @@ package signalr
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -96,31 +95,17 @@ func (c *Client) Connect() error {
 	//}
 
 	//fmt.Println("Chosen transport:", transport)
+	if !negotiationResponse.TryWebSockets {
+		return ErrWebsocketsUnsupported
+	}
 	fmt.Println("Chosen transport: websocket")
 
-	// Initialise websocket
-	u := url.URL{
-		Scheme: "wss", // try wss instead of ws
-		Host:   "livetiming.formula1.com",
-		Path:   "/signalr/connect",
-	}
-	uri.Scheme = "wss"
-
-	q := u.Query()
-	q.Set("transport", "webSockets")
-	q.Set("connectionToken", negotiationResponse.ConnectionToken)
-	u.RawQuery = q.Encode()
-
-	conn, resp, err := websocket.DefaultDialer.Dial(
-		u.String(),
-		//http.Header{"User-Agent": []string{"Go-SignalR-Client"}},
-		http.Header{},
-	)
+	transport := &WebsocketTransport{}
+	conn, err := transport.Connect("livetiming.formula1.com/signalr", negotiationResponse.ConnectionToken, []Hub{{"Streaming"}})
 	if err != nil {
-		log.Fatalf("dial error: %v (status %v)", err, resp.Status)
+		return err
 	}
 	defer conn.Close()
-	log.Println("Connected!")
 
 	// Send a HandshakeRequest
 	b, _ := json.Marshal(HandshakeRequest{
@@ -136,6 +121,40 @@ func (c *Client) Connect() error {
 	// should be {} + 0x1E if successful
 	fmt.Println(string(msg))
 
+	// TODO: Send start request
+	// Should receive: {Response: Started}
+	/*
+		» start – informs the server that transport started successfully
+		Required parameters: transport, clientProtocol, connectionToken, connectionData (when using hubs)
+		Optional parameters: queryString
+		Sample request:
+
+		http://host/signalr/start?transport=webSockets&clientProtocol=1.5&connectionToken=LkNk&connectionData=%5B%7B%22name%22%3A%22chat%22%7D%5D
+		Sample response:
+	*/
+
+	// TODO: Invoke Subscription: hub.server.invoke("Subscribe", self.topics)
+	//{"H":"chathub","M":"Send","A":["JS Client","Test message"],"I":0, "S":{"customProperty" : "abc"}}
+	// Send a HandshakeRequest
+	b, _ = json.Marshal(map[string]interface{}{
+		"H": "Streaming",
+		"M": "Subscribe",
+		// It expects a single argument, an array of strings, but signalr uses an array of A, so nest the struct with [][]string
+		"A": [][]string{{"Heartbeat", "CarData.z", "Position.z",
+			"ExtrapolatedClock", "TopThree", "RcmSeries",
+			"TimingStats", "TimingAppData",
+			"WeatherData", "TrackStatus", "DriverList",
+			"RaceControlMessages", "SessionInfo",
+			"SessionData", "LapCount", "TimingData"}},
+		"I": 1,
+	})
+	// append record separator (0x1E)
+	b = append(b, 0x1E)
+	conn.WriteMessage(websocket.TextMessage, b)
+	fmt.Println("Sending", string(b))
+
+	// FIXME: Read 1 bytes: {"I":"0","E":"'Subscribe' method could not be resolved. Potential candidates are: \nSubscribe(channels:String[]):Task`1"}
+
 	fmt.Println("Reading messages...")
 	buf := ""
 	for {
@@ -150,6 +169,7 @@ func (c *Client) Connect() error {
 			var m map[string]interface{}
 			json.Unmarshal([]byte(p), &m)
 			fmt.Printf("Got message: %+v\n", m)
+			// TODO: Parse keepalive ({}) which is sent every 10 seconds
 		}
 		buf = parts[len(parts)-1] // leftover
 	}
@@ -177,3 +197,18 @@ func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
 
 	return &negotiationResponse, nil
 }
+
+// TODO: Reconnect
+/*
+reconnect – sent to the server when the connection is lost and the client is reconnecting
+Required parameters: transport, clientProtocol, connectionToken, connectionData (when using hubs), messageId, groupsToken (if the connection belongs to a group)
+Optional parameters: queryString
+Sample request:
+
+ws://host/signalr/reconnect?transport=webSockets&clientProtocol=1.4&connectionToken=Aa-
+aQA&connectionData=%5B%7B%22Name%22:%22hubConnection%22%7D%5D&messageId=d-3104A0A8-H,0%7CL,0%7CM,2%7CK,0&groupsToken=AQ
+Sample response: N/A
+*/
+
+// TODO: Abort
+// TODO: Ping
