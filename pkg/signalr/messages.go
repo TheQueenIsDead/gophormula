@@ -16,3 +16,41 @@ Message types as described by: https://github.com/dotnet/aspnetcore/blob/main/sr
 //Ping	Caller, Callee	Sent by either party to check if the connection is active.
 //Ack	Caller, Callee	Sent by either party to acknowledge that messages have been received up to the provided sequence ID.
 //Sequence	Caller, Callee	Sent by either party as the first message when a connection reconnects. Specifies what sequence ID they will start sending messages starting at. Duplicate messages are possible to receive and should be ignored.
+
+type AvailableTransport struct {
+	Transport       string   `json:"transport"`
+	TransferFormats []string `json:"transferFormats"`
+}
+
+// TODO: This is supposed to be supported?
+//type NegotiationResponse struct {
+//	NegotiateVersion    int                  `json:"negotiateVersion"`
+//	ConnectionId        string               `json:"connectionId"`
+//	AvailableTransports []AvailableTransport `json:"availableTransports"`
+//}
+
+//type NegotiationResponseV1 struct {
+//	ConnectionToken     string               `json:"connectionToken"`
+//	ConnectionId        string               `json:"connectionId"`
+//	NegotiateVersion    int                  `json:"negotiateVersion"`
+//	AvailableTransports []AvailableTransport `json:"availableTransports"`
+//}
+
+type NegotiationResponse struct {
+	Url                     string  `json:"Url"`
+	ConnectionToken         string  `json:"ConnectionToken"`
+	ConnectionId            string  `json:"ConnectionId"`
+	KeepAliveTimeout        float64 `json:"KeepAliveTimeout"`
+	DisconnectTimeout       float64 `json:"DisconnectTimeout"`
+	ConnectionTimeout       float64 `json:"ConnectionTimeout"`
+	TryWebSockets           bool    `json:"TryWebSockets"`
+	ProtocolVersion         string  `json:"ProtocolVersion"`
+	TransportConnectTimeout float64 `json:"TransportConnectTimeout"`
+	LongPollDelay           float64 `json:"LongPollDelay"`
+}
+
+// HandshakeRequest	Client	Sent by the client to agree on the message format.
+type HandshakeRequest struct {
+	Protocol string `json:"protocol"`
+	Version  int    `json:"version"`
+}
