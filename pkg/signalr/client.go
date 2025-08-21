@@ -59,16 +59,16 @@ func NewClient(opts ...Option) *Client {
 	return client
 }
 
-func (c *Client) Connect() error {
+func (c *Client) Connect() (chan interface{}, error) {
 
 	uri, err := url.Parse(c.url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	negotiationResponse, err := c.negotiate(*(uri.JoinPath(NegotiationPath)))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Println(negotiationResponse)
 
@@ -96,16 +96,16 @@ func (c *Client) Connect() error {
 
 	//fmt.Println("Chosen transport:", transport)
 	if !negotiationResponse.TryWebSockets {
-		return ErrWebsocketsUnsupported
+		return nil, ErrWebsocketsUnsupported
 	}
 	fmt.Println("Chosen transport: websocket")
 
 	transport := &WebsocketTransport{}
 	conn, err := transport.Connect("livetiming.formula1.com/signalr", negotiationResponse.ConnectionToken, []Hub{{"Streaming"}})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer conn.Close()
+	// defer conn.Close()
 
 	// Send a HandshakeRequest
 	b, _ := json.Marshal(HandshakeRequest{
@@ -119,6 +119,7 @@ func (c *Client) Connect() error {
 	// Read server response
 	_, msg, _ := conn.ReadMessage()
 	// should be {} + 0x1E if successful
+	fmt.Println("Init message....")
 	fmt.Println(string(msg))
 
 	// TODO: Send start request
@@ -153,28 +154,7 @@ func (c *Client) Connect() error {
 	conn.WriteMessage(websocket.TextMessage, b)
 	fmt.Println("Sending", string(b))
 
-	// FIXME: Read 1 bytes: {"I":"0","E":"'Subscribe' method could not be resolved. Potential candidates are: \nSubscribe(channels:String[]):Task`1"}
-
-	fmt.Println("Reading messages...")
-	buf := ""
-	for {
-		n, message, _ := conn.ReadMessage()
-		fmt.Printf("Read %d bytes: %s\n", n, message)
-		buf += string(message)
-		parts := strings.Split(buf, string(rune(0x1E)))
-		for _, p := range parts[:len(parts)-1] {
-			if p == "" {
-				continue
-			}
-			var m map[string]interface{}
-			json.Unmarshal([]byte(p), &m)
-			fmt.Printf("Got message: %+v\n", m)
-			// TODO: Parse keepalive ({}) which is sent every 10 seconds
-		}
-		buf = parts[len(parts)-1] // leftover
-	}
-
-	return nil
+	return c.read(conn), nil
 }
 
 func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
@@ -196,6 +176,36 @@ func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
 	}
 
 	return &negotiationResponse, nil
+}
+
+func (c *Client) read(conn *websocket.Conn) chan interface{} {
+
+	ch := make(chan interface{})
+
+	go func() {
+		fmt.Println("Reading messages...")
+		buf := ""
+		for {
+			n, message, _ := conn.ReadMessage()
+			fmt.Printf("Read %d bytes: %s\n", n, message)
+			buf += string(message)
+			parts := strings.Split(buf, string(rune(0x1E)))
+			for _, p := range parts[:len(parts)-1] {
+				if p == "" {
+					continue
+				}
+				var m map[string]interface{}
+				json.Unmarshal([]byte(p), &m)
+				fmt.Printf("Got message: %+v\n", m)
+				// TODO: Parse keepalive ({}) which is sent every 10 seconds
+			}
+			buf = parts[len(parts)-1] // leftover
+
+			ch <- string(message)
+		}
+	}()
+
+	return ch
 }
 
 // TODO: Reconnect

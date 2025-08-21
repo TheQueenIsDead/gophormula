@@ -1,15 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"gophormula/pkg/signalr"
 	"log"
-)
-
-const (
-	PROTOCOL       = "https://"
-	FQDN           = "livetiming.formula1.com"
-	BASE_PATH      = "/signalr"
-	NEGOTIATE_PATH = "/negotiate"
 )
 
 func main() {
@@ -18,9 +12,15 @@ func main() {
 		signalr.WithURL("https://livetiming.formula1.com/signalr"),
 	)
 
-	err := client.Connect()
+	ch, err := client.Connect()
 	if err != nil {
 		log.Fatal(err)
+	}
+	for {
+		select {
+		case m := <-ch:
+			fmt.Println("Received:", m)
+		}
 	}
 
 }
