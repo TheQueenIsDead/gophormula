@@ -13,7 +13,10 @@ func main() {
 		signalr.WithURL("https://livetiming.formula1.com/signalr"),
 	)
 
-	ch, err := client.Connect([]string{livetiming.Streaming.String()}, livetiming.AllTopics())
+	ch, err := client.Connect(
+		[]signalr.Hub{"Streaming"},
+		livetiming.AllTopics(),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

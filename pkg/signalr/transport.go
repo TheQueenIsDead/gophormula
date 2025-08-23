@@ -10,23 +10,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Hub struct {
-	Name string `json:"Name"`
-}
-
 // TODO: Make this a properly generic interface
 type Transport interface {
-	Connect(url string) error
+	Connect(host, token string, hubs []Hub) error
+	Handshake() error
+	Read() ([]byte, error)
+	Write([]byte) error
 }
 
 type WebsocketTransport struct {
-	URL string
+	URL  string
+	conn *websocket.Conn
 }
 
-func (WebsocketTransport) Connect(host, token string, hubs []Hub) (*websocket.Conn, error) {
+func (t *WebsocketTransport) Connect(host, token string, hubs []Hub) error {
 	u, err := url.Parse(host)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	u.Scheme = "wss"
 
@@ -36,7 +36,7 @@ func (WebsocketTransport) Connect(host, token string, hubs []Hub) (*websocket.Co
 
 	hubsJson, err := json.Marshal(hubs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	q.Set("connectionData", string(hubsJson))
 
@@ -61,9 +61,33 @@ func (WebsocketTransport) Connect(host, token string, hubs []Hub) (*websocket.Co
 	}
 	if err != nil {
 		log.Printf("Failed to connect after retries: %v", err)
-		return nil, err
+		return err
 	}
-	return conn, nil
+
+	t.conn = conn
+
+	return nil
 }
 
-func (WebsocketTransport) Invoke() {}
+func (t *WebsocketTransport) Invoke() {}
+
+func (t *WebsocketTransport) Handshake() error {
+	b, _ := json.Marshal(HandshakeRequest{
+		Protocol: "json",
+		Version:  1,
+	})
+	// append record separator (0x1E)
+	b = append(b, RecordSeparator)
+	err := t.conn.WriteMessage(websocket.TextMessage, b)
+
+	return err
+}
+
+func (t *WebsocketTransport) Read() ([]byte, error) {
+	_, msg, err := t.conn.ReadMessage()
+	return msg, err
+}
+
+func (t *WebsocketTransport) Write(msg []byte) error {
+	return t.conn.WriteMessage(websocket.TextMessage, msg)
+}
