@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="replay" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="gophormula" />
+    <working_directory value="$PROJECT_DIR$" />
+    <parameters value="./data/2025/2025-07-06_British_Grand_Prix/2025-07-06_Race/" />
+    <kind value="FILE" />
+    <package value="gophormula" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/cmd/replay/main.go" />
+    <method v="2" />
+  </configuration>
+</component>

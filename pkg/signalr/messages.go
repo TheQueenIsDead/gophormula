@@ -19,25 +19,6 @@ Message types as described by: https://github.com/dotnet/aspnetcore/blob/main/sr
 //Ack	Caller, Callee	Sent by either party to acknowledge that messages have been received up to the provided sequence ID.
 //Sequence	Caller, Callee	Sent by either party as the first message when a connection reconnects. Specifies what sequence ID they will start sending messages starting at. Duplicate messages are possible to receive and should be ignored.
 
-type AvailableTransport struct {
-	Transport       string   `json:"transport"`
-	TransferFormats []string `json:"transferFormats"`
-}
-
-// TODO: This is supposed to be supported?
-//type NegotiationResponse struct {
-//	NegotiateVersion    int                  `json:"negotiateVersion"`
-//	ConnectionId        string               `json:"connectionId"`
-//	AvailableTransports []AvailableTransport `json:"availableTransports"`
-//}
-
-//type NegotiationResponseV1 struct {
-//	ConnectionToken     string               `json:"connectionToken"`
-//	ConnectionId        string               `json:"connectionId"`
-//	NegotiateVersion    int                  `json:"negotiateVersion"`
-//	AvailableTransports []AvailableTransport `json:"availableTransports"`
-//}
-
 type NegotiationResponse struct {
 	Url                     string  `json:"Url"`
 	ConnectionToken         string  `json:"ConnectionToken"`
@@ -74,4 +55,12 @@ type ConnectResponse struct {
 	// G – groups token – an encrypted string representing group membership
 	// T – if the value is 1 the client should transition into the reconnecting state and try to reconnect to the server (i.e. send the reconnect request). The server is sending a message with this property set to 1 if it is being shut down or restarted. Applies to the longPolling transport only.
 	// L – the delay between re-establishing poll connections. Applies to the longPolling transport only. Used only by the JavaScript client. Configurable on the server by setting the IConfigurationManager.LongPollDelay property.
+}
+
+// Invocation Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
+type Invocation struct {
+	Hub       Hub           `json:"H"`
+	Method    string        `json:"M"`
+	Arguments []interface{} `json:"A"`
+	I         interface{}   `json:"I"`
 }
