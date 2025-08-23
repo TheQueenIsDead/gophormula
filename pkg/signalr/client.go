@@ -3,11 +3,11 @@ package signalr
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
-
-	"github.com/gorilla/websocket"
 )
 
 const (
@@ -15,15 +15,17 @@ const (
 
 	// TODO: This may need to be used to track separate messages on the signalr transport:
 	// https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md#overview
-	RecordSeparator = "\x1E"
+	RecordSeparator = 0x1E
 )
 
 type Client struct {
-	url     string
-	base    string
-	version uint
-	ack     bool
-	token   string
+	log       *slog.Logger
+	url       string
+	base      string
+	version   uint
+	ack       bool
+	token     string
+	transport Transport
 }
 
 type Option func(*Client)
@@ -47,7 +49,11 @@ func WithAck(ack bool) Option {
 }
 
 func NewClient(opts ...Option) *Client {
+
 	client := &Client{
+		log: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 		url:     "http://localhost:8080/signalr",
 		version: 1,
 		ack:     false,
@@ -59,68 +65,44 @@ func NewClient(opts ...Option) *Client {
 	return client
 }
 
-func (c *Client) Connect() (chan interface{}, error) {
+func (c *Client) Connect(hubs []Hub, topics []string) (chan interface{}, error) {
 
 	uri, err := url.Parse(c.url)
 	if err != nil {
+		c.log.Error(err.Error())
 		return nil, err
 	}
 
 	negotiationResponse, err := c.negotiate(*(uri.JoinPath(NegotiationPath)))
 	if err != nil {
+		c.log.Error(err.Error())
 		return nil, err
 	}
-	fmt.Println(negotiationResponse)
 
-	//if len(negotiationResponse.AvailableTransports) == 0 {
-	//	return errors.New("no available transports")
-	//}
+	c.log.Debug(negotiationResponse.String())
 
-	//var transport AvailableTransport
-	//var transportPriority = math.MinInt32
-	//for _, available := range negotiationResponse.AvailableTransports {
-	//	priority := -1
-	//	switch available.Transport {
-	//	case "LongPolling":
-	//		priority = 0
-	//	case "ServerSentEvents":
-	//		priority = 1
-	//	case "WebSockets":
-	//		priority = 2
-	//	}
-	//	if priority > transportPriority {
-	//		transport = available
-	//		transportPriority = priority
-	//	}
-	//}
-
-	//fmt.Println("Chosen transport:", transport)
 	if !negotiationResponse.TryWebSockets {
+		c.log.Error(ErrWebsocketsUnsupported.Error())
 		return nil, ErrWebsocketsUnsupported
 	}
-	fmt.Println("Chosen transport: websocket")
 
-	transport := &WebsocketTransport{}
-	conn, err := transport.Connect("livetiming.formula1.com/signalr", negotiationResponse.ConnectionToken, []Hub{{"Streaming"}})
+	c.log.Info("Chosen transport: websocket")
+
+	c.transport = &WebsocketTransport{}
+	err = c.transport.Connect("livetiming.formula1.com/signalr", negotiationResponse.ConnectionToken, []Hub{"Streaming"})
 	if err != nil {
+		c.log.Error(err.Error())
 		return nil, err
 	}
 	// defer conn.Close()
 
 	// Send a HandshakeRequest
-	b, _ := json.Marshal(HandshakeRequest{
-		Protocol: "json",
-		Version:  1,
-	})
-	// append record separator (0x1E)
-	b = append(b, 0x1E)
-	conn.WriteMessage(websocket.TextMessage, b)
+	err = c.transport.Handshake()
 
 	// Read server response
-	_, msg, _ := conn.ReadMessage()
+	msg, err := c.transport.Read()
 	// should be {} + 0x1E if successful
-	fmt.Println("Init message....")
-	fmt.Println(string(msg))
+	c.log.Debug(string(msg))
 
 	// TODO: Send start request
 	// Should receive: {Response: Started}
@@ -134,27 +116,49 @@ func (c *Client) Connect() (chan interface{}, error) {
 		Sample response:
 	*/
 
+	_, err = c.Invoke(InvocationRequest{
+		Hub:    "Streaming",
+		Method: "Subscribe",
+		Arguments: []interface{}{
+			[]string{
+				"Heartbeat", "CarData.z", "Position.z",
+				"ExtrapolatedClock", "TopThree", "RcmSeries",
+				"TimingStats", "TimingAppData",
+				"WeatherData", "TrackStatus", "DriverList",
+				"RaceControlMessages", "SessionInfo",
+				"SessionData", "LapCount", "TimingData",
+			},
+		},
+		I: 1,
+	})
+	if err != nil {
+		c.log.Error(err.Error())
+		return nil, err
+	}
+
+	return c.read(), nil
+}
+
+func (c *Client) Invoke(req InvocationRequest) (InvocationResponse, error) {
 	// TODO: Invoke Subscription: hub.server.invoke("Subscribe", self.topics)
 	//{"H":"chathub","M":"Send","A":["JS Client","Test message"],"I":0, "S":{"customProperty" : "abc"}}
 	// Send a HandshakeRequest
-	b, _ = json.Marshal(map[string]interface{}{
-		"H": "Streaming",
-		"M": "Subscribe",
-		// It expects a single argument, an array of strings, but signalr uses an array of A, so nest the struct with [][]string
-		"A": [][]string{{"Heartbeat", "CarData.z", "Position.z",
-			"ExtrapolatedClock", "TopThree", "RcmSeries",
-			"TimingStats", "TimingAppData",
-			"WeatherData", "TrackStatus", "DriverList",
-			"RaceControlMessages", "SessionInfo",
-			"SessionData", "LapCount", "TimingData"}},
-		"I": 1,
+	b, _ := json.Marshal(map[string]interface{}{
+		"H": req.Hub,
+		"M": req.Method,
+		"A": req.Arguments,
+		"I": req.I,
 	})
 	// append record separator (0x1E)
-	b = append(b, 0x1E)
-	conn.WriteMessage(websocket.TextMessage, b)
+	b = append(b, RecordSeparator)
+	err := c.transport.Write(b)
+	if err != nil {
+		return InvocationResponse{}, err
+	}
 	fmt.Println("Sending", string(b))
 
-	return c.read(conn), nil
+	// TODO: Fixme, actually get a response.
+	return InvocationResponse{}, nil
 }
 
 func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
@@ -178,7 +182,25 @@ func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
 	return &negotiationResponse, nil
 }
 
-func (c *Client) read(conn *websocket.Conn) chan interface{} {
+// TODO: Reconnect
+func (c *Client) reconnect() {
+	// TODO: implement reconnection
+	panic("not implemented")
+}
+
+// TODO: Abort
+func (c *Client) abort() {
+	// TODO: implement reconnection
+	panic("not implemented")
+}
+
+// TODO: Ping
+func (c *Client) ping() {
+	// TODO: implement reconnection
+	panic("not implemented")
+}
+
+func (c *Client) read() chan interface{} {
 
 	ch := make(chan interface{})
 
@@ -186,8 +208,12 @@ func (c *Client) read(conn *websocket.Conn) chan interface{} {
 		fmt.Println("Reading messages...")
 		buf := ""
 		for {
-			n, message, _ := conn.ReadMessage()
-			fmt.Printf("Read %d bytes: %s\n", n, message)
+			message, err := c.transport.Read()
+			if err != nil {
+				close(ch)
+				break
+			}
+			fmt.Printf("Read: %s\n", message)
 			buf += string(message)
 			parts := strings.Split(buf, string(rune(0x1E)))
 			for _, p := range parts[:len(parts)-1] {
@@ -207,18 +233,3 @@ func (c *Client) read(conn *websocket.Conn) chan interface{} {
 
 	return ch
 }
-
-// TODO: Reconnect
-/*
-reconnect – sent to the server when the connection is lost and the client is reconnecting
-Required parameters: transport, clientProtocol, connectionToken, connectionData (when using hubs), messageId, groupsToken (if the connection belongs to a group)
-Optional parameters: queryString
-Sample request:
-
-ws://host/signalr/reconnect?transport=webSockets&clientProtocol=1.4&connectionToken=Aa-
-aQA&connectionData=%5B%7B%22Name%22:%22hubConnection%22%7D%5D&messageId=d-3104A0A8-H,0%7CL,0%7CM,2%7CK,0&groupsToken=AQ
-Sample response: N/A
-*/
-
-// TODO: Abort
-// TODO: Ping
