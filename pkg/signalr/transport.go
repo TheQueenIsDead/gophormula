@@ -14,7 +14,7 @@ import (
 type Transport interface {
 	Connect(host, token string, hubs []Hub) error
 	Handshake() error
-	Read() ([]byte, error)
+	Read() (Message, error)
 	Write([]byte) error
 }
 
@@ -93,9 +93,22 @@ func (t *WebsocketTransport) Handshake() error {
 	return err
 }
 
-func (t *WebsocketTransport) Read() ([]byte, error) {
-	_, msg, err := t.conn.ReadMessage()
-	return msg, err
+func (t *WebsocketTransport) Read() (Message, error) {
+	_, raw, err := t.conn.ReadMessage()
+	if err != nil {
+		return Message{}, err
+	}
+
+	var msg Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		// It might be a simple keep-alive or other non-json message.
+		// We'll log it and return an empty message, but not an error.
+		log.Printf("could not unmarshal message: %s", string(raw))
+		return Message{Raw: raw}, nil
+	}
+
+	msg.Raw = raw
+	return msg, nil
 }
 
 func (t *WebsocketTransport) Write(msg []byte) error {

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 )
 
 const (
@@ -65,7 +64,7 @@ func NewClient(opts ...Option) *Client {
 	return client
 }
 
-func (c *Client) Connect(hubs []Hub, topics []string) (chan interface{}, error) {
+func (c *Client) Connect(hubs []Hub, topics []string) (chan Message, error) {
 
 	uri, err := url.Parse(c.url)
 	if err != nil {
@@ -101,8 +100,13 @@ func (c *Client) Connect(hubs []Hub, topics []string) (chan interface{}, error) 
 
 	// Read server response
 	msg, err := c.transport.Read()
+	if err != nil {
+		return nil, err
+	}
 	// should be {} + 0x1E if successful
-	c.log.Debug(string(msg))
+	if string(msg.Raw) != "{}\u001e" {
+		c.log.Warn("unexpected handshake response", "response", string(msg.Raw))
+	}
 
 	// TODO: Send start request
 	// Should receive: {Response: Started}
@@ -200,34 +204,19 @@ func (c *Client) ping() {
 	panic("not implemented")
 }
 
-func (c *Client) read() chan interface{} {
+func (c *Client) read() chan Message {
 
-	ch := make(chan interface{})
+	ch := make(chan Message)
 
 	go func() {
-		fmt.Println("Reading messages...")
-		buf := ""
 		for {
-			message, err := c.transport.Read()
+			msg, err := c.transport.Read()
 			if err != nil {
+				c.log.Error("transport read error", "error", err)
 				close(ch)
 				break
 			}
-			fmt.Printf("Read: %s\n", message)
-			buf += string(message)
-			parts := strings.Split(buf, string(rune(0x1E)))
-			for _, p := range parts[:len(parts)-1] {
-				if p == "" {
-					continue
-				}
-				var m map[string]interface{}
-				json.Unmarshal([]byte(p), &m)
-				fmt.Printf("Got message: %+v\n", m)
-				// TODO: Parse keepalive ({}) which is sent every 10 seconds
-			}
-			buf = parts[len(parts)-1] // leftover
-
-			ch <- string(message)
+			ch <- msg
 		}
 	}()
 
