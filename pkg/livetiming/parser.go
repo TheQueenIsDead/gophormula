@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"maps"
@@ -20,6 +21,34 @@ const (
 	// Specifics about the date format can be found at https://go.dev/src/time/format.go
 	IntervalTimeFormat = "15:04:05.999"
 )
+
+func Classify(data []byte) (any, error) {
+	var j map[string]interface{}
+	err := json.Unmarshal(data, &j)
+	if err != nil {
+		return nil, err
+	}
+
+	keys := slices.Collect(maps.Keys(j))
+	slices.Sort(keys) // normalize order
+
+	switch {
+	case slices.Equal(keys, []string{}):
+		return Heartbeat, nil
+	case slices.Equal(keys, []string{"C", "G", "M"}):
+		return nil, nil // FIXME: C,G,M
+	case slices.Equal(keys, []string{"C", "M"}):
+		return nil, nil // FIXME: C,M
+	case slices.Equal(keys, []string{"I", "R"}):
+		return nil, nil // FIXME: I,R
+	default:
+		log.Println(keys)
+		return nil, errors.New("invalid data")
+	}
+
+	fmt.Println(keys)
+	return nil, nil
+}
 
 func Parse(r io.Reader) ([]string, error) {
 	scanner := bufio.NewScanner(r)

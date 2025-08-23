@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/signalr"
 	"log"
@@ -23,7 +22,24 @@ func main() {
 	for {
 		select {
 		case m := <-ch:
-			fmt.Println("Received:", m)
+			log.Println("Received:", m)
+			switch m.(type) {
+			case signalr.Message:
+				message := m.(signalr.Message)
+				log.Println(message)
+			case []byte:
+				buf := m.([]byte)
+				_, err := livetiming.Classify(buf)
+				if err != nil {
+					log.Fatal(err)
+				}
+			case string:
+				s := m.(string)
+				_, err := livetiming.Classify([]byte(s))
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
 		}
 	}
 
