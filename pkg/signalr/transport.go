@@ -34,13 +34,23 @@ func (t *WebsocketTransport) Connect(host, token string, hubs []Hub) error {
 	q.Set("transport", "webSockets")
 	q.Set("connectionToken", token)
 
-	hubsJson, err := json.Marshal(hubs)
+	var hubPayload []interface{}
+	for _, h := range hubs {
+		hubPayload = append(hubPayload, struct{ Name string }{Name: h.String()})
+	}
+	hubsJson, err := json.Marshal(hubPayload)
 	if err != nil {
 		return err
 	}
 	q.Set("connectionData", string(hubsJson))
 
 	u.RawQuery = q.Encode()
+
+	path, err := url.JoinPath(u.Path, "/connect")
+	if err != nil {
+		return err
+	}
+	u.Path = path
 
 	retries := 5
 	var conn *websocket.Conn
