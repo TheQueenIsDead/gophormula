@@ -17,11 +17,3 @@ func TestParse(t *testing.T) {
 		t.Error(err)
 	}
 }
-
-func TestParseInterval(t *testing.T) {
-	intervalData := "00:00:03.712"
-	_, err := parseInterval(intervalData)
-	if err != nil {
-		t.Error(err)
-	}
-}

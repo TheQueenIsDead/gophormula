@@ -14,7 +14,7 @@ type Hub struct {
 	Name string `json:"Name"`
 }
 
-// TODO: Make this a proper interface
+// TODO: Make this a properly generic interface
 type Transport interface {
 	Connect(url string) error
 }
@@ -66,4 +66,4 @@ func (WebsocketTransport) Connect(host, token string, hubs []Hub) (*websocket.Co
 	return conn, nil
 }
 
-func (WebsocketTransport) Send(conn *websocket.Conn) {}
+func (WebsocketTransport) Invoke() {}
