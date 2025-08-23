@@ -5,6 +5,27 @@ import (
 	"time"
 )
 
+type Message struct {
+	c string `json:"C,omitempty"`
+	g string `json:"G,omitempty"`
+	i string `json:"I,omitempty"`
+
+	R json.RawMessage `json:"R,omitempty"`
+	M json.RawMessage `json:"M,omitempty"`
+
+	Raw []byte
+}
+
+func (m *Message) Data() json.RawMessage {
+	if m.R != nil {
+		return m.R
+	}
+	if m.M != nil {
+		return m.M
+	}
+	return nil
+}
+
 /*
 Message types as described by: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md#overview
 */
@@ -107,7 +128,7 @@ type PersistentMessage struct {
 	G string        `json:"G"`
 	M []interface{} `json:"M"`
 }
-type Message struct {
+type MiscMessage struct {
 	R struct {
 		Heartbeat struct {
 			Utc time.Time `json:"Utc"`

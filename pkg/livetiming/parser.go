@@ -1,127 +1,113 @@
 package livetiming
 
 import (
-	"bufio"
 	"bytes"
 	"compress/flate"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"maps"
-	"slices"
+	"reflect"
 	"strings"
-	"time"
 )
 
-const (
-	// IntervalTimeFormat is stdHour:stdZeroMinute:stdZeroSecond.stdFracSecond9 to 3 decimal places
-	// Specifics about the date format can be found at https://go.dev/src/time/format.go
-	IntervalTimeFormat = "15:04:05.999"
-)
+var messageRegistry = make(map[string]reflect.Type)
 
-func Classify(data []byte) (any, error) {
-	var j map[string]interface{}
-	err := json.Unmarshal(data, &j)
+func init() {
+	// Register all known message types
+	messageRegistry["Heartbeat"] = reflect.TypeOf(Heartbeat{})
+	messageRegistry["CarData"] = reflect.TypeOf(CarData{})
+	messageRegistry["Position"] = reflect.TypeOf(PositionData{})
+	messageRegistry["SessionInfo"] = reflect.TypeOf(SessionInfo{})
+	messageRegistry["TimingData"] = reflect.TypeOf(TimingData{})
+	messageRegistry["TopThree"] = reflect.TypeOf(TopThree{})
+	messageRegistry["TimingStats"] = reflect.TypeOf(TimingStats{})
+	messageRegistry["TimingAppData"] = reflect.TypeOf(TimingAppData{})
+	messageRegistry["WeatherData"] = reflect.TypeOf(WeatherData{})
+	messageRegistry["TrackStatus"] = reflect.TypeOf(TrackStatus{})
+	messageRegistry["DriverList"] = reflect.TypeOf(DriverList{})
+	messageRegistry["RaceControlMessages"] = reflect.TypeOf(RaceControlMessages{})
+	messageRegistry["SessionData"] = reflect.TypeOf(SessionData{})
+	messageRegistry["LapCount"] = reflect.TypeOf(LapCount{})
+}
+
+// Decompress takes a byte slice, decodes it from base64, and decompresses it using flate.
+func Decompress(data []byte) ([]byte, error) {
+	decoded, err := base64.StdEncoding.DecodeString(string(data))
 	if err != nil {
 		return nil, err
 	}
-
-	keys := slices.Collect(maps.Keys(j))
-	slices.Sort(keys) // normalize order
-
-	switch {
-	case slices.Equal(keys, []string{}):
-		return Heartbeat, nil
-	case slices.Equal(keys, []string{"C", "G", "M"}):
-		return nil, nil // FIXME: C,G,M
-	case slices.Equal(keys, []string{"C", "M"}):
-		return nil, nil // FIXME: C,M
-	case slices.Equal(keys, []string{"I", "R"}):
-		return nil, nil // FIXME: I,R
-	default:
-		log.Println(keys)
-		return nil, errors.New("invalid data")
+	r := flate.NewReader(bytes.NewReader(decoded))
+	defer func(r io.ReadCloser) {
+		err := r.Close()
+		if err != nil {
+			log.Printf("failed to close reader: %v\n", err)
+		}
+	}(r)
+	var out bytes.Buffer
+	if _, err := out.ReadFrom(r); err != nil {
+		return nil, err
 	}
-
-	fmt.Println(keys)
-	return nil, nil
+	return out.Bytes(), nil
 }
 
-func Parse(r io.Reader) ([]string, error) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		_, l, err := ParseLine(scanner.Text())
-		log.Printf("%v\n", l)
-		if err != nil {
-			return nil, err
+func ParseJSON(msg json.RawMessage) any {
+
+	// Attempt to parse out JSON from the 'R' incremental update mode.
+	var r map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &r); err == nil {
+		for topic, data := range r {
+			// TODO: Something!
+			fmt.Println(topic, data)
 		}
-	}
-	return nil, nil
-}
-
-func ParseLine(line string) (*time.Time, *string, error) {
-
-	// Sanitise the line to remove incorrectly appended UTF-8 BOM's
-	line = strings.ToValidUTF8(line, "")
-	line = strings.Replace(line, "\xEF\xBB\xBF", "", -1)
-
-	// Check if there is a timestamp at the beginning of the line, else use now
-	twelve := line[:min(len(line), 12)]
-	timestamp, tsErr := time.Parse(IntervalTimeFormat, twelve)
-	if tsErr != nil {
-		timestamp = time.Now()
+		return r
 	}
 
-	// If the ts was valid, remove it from the line
-	if tsErr == nil {
-		line = line[min(len(line), 12):]
-	}
-
-	// If the start of the line is not JSON compliant, assume compressed
-	if line[0] != '{' {
-
-		compressed := strings.ReplaceAll(line, "\"", "")
-		decoded, err := base64.StdEncoding.DecodeString(compressed)
-		if err != nil {
-			log.Printf("failed to decode base64 string: %v\n", err)
-			log.Printf("line: %v\n", line)
-			return nil, nil, err
-		}
-
-		r := flate.NewReader(bytes.NewReader(decoded))
-		defer func(r io.ReadCloser) {
-			err := r.Close()
-			if err != nil {
-				log.Printf("failed to close reader: %v\n", err)
-				panic(err)
+	// Conversely, attempt to parse JSON from the standard 'M' message array.
+	var m [][]json.RawMessage
+	if err := json.Unmarshal(msg, &m); err == nil {
+		for _, message := range m {
+			if len(message) != 2 {
+				log.Printf("invalid message format in M block: expected 2 elements, got %d", len(message))
+				continue
 			}
-		}(r)
-		var out bytes.Buffer
-		if _, err := out.ReadFrom(r); err != nil {
-			log.Println("flate decompress error", err)
-			return nil, nil, err
+			var topic string
+			if err := json.Unmarshal(message[0], &topic); err != nil {
+				log.Printf("error unmarshalling topic from M block: %v", err)
+				continue
+			}
+			// TODO: Something!
+			fmt.Println(topic, message[1])
 		}
-		line = out.String()
+		return m
+	}
+	return nil
+}
+
+func Parse(topic string, data []byte) (any, error) {
+	// If topic ends with .z, decompress
+	if strings.HasSuffix(topic, ".z") {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return nil, fmt.Errorf("error unquoting compressed data: %w", err)
+		}
+		var err error
+		data, err = Decompress([]byte(s))
+		if err != nil {
+			return nil, fmt.Errorf("error decompressing data: %w", err)
+		}
+		topic = strings.TrimSuffix(topic, ".z")
 	}
 
-	// Attempt to json decode the payload
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(line), &payload); err != nil {
-		log.Println(err)
-		return nil, nil, err
+	if t, ok := messageRegistry[topic]; ok {
+		// Create a new instance of the message type
+		v := reflect.New(t).Interface()
+		if err := json.Unmarshal(data, v); err != nil {
+			return nil, fmt.Errorf("error unmarshalling %s: %w", topic, err)
+		}
+		return v, nil
 	}
 
-	// TODO: Once we know the keys, marshal into the corresponding struct. Currently WIP
-	keySeq := maps.Keys(payload)
-	keyArr := slices.Collect(keySeq)
-	if len(keyArr) == 0 {
-		return nil, nil, errors.New("no json keys found")
-	}
-	keys := strings.Join(keyArr, "-")
-
-	return &timestamp, &keys, nil
-
+	return nil, fmt.Errorf("unknown message topic: %s", topic)
 }
