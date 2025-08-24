@@ -2,11 +2,8 @@ package replay
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
-	"fmt"
 	"gophormula/pkg/livetiming"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -49,7 +46,6 @@ func (r *Replayer) ParseGlob(glob string) error {
 			log.Fatal(err)
 		}
 		r.files = append(r.files, *file)
-		//defer file.Close()
 	}
 
 	return nil
@@ -63,29 +59,30 @@ func (r *Replayer) broadcast(message any) {
 }
 
 // FIXME: Need to account for stream data starting at different times in different files
-func (r *Replayer) Start() {
+func (r *Replayer) Start() error {
 	for _, file := range r.files {
+		//topic := filepath.Base(file.Name())
 		go func() {
 			scanner := bufio.NewScanner(&file)
 			for scanner.Scan() {
 				line := scanner.Text()
-				_, data, err := livetiming.ParseLine(line)
+				// TODO: FIXME
+				_, msg, err := livetiming.ExtractReplayData(line)
 				if err != nil {
-					log.Println("decode error", err, line, file.Name())
-					// TODO: Remove this, convenient to crash and debug while developing
-					log.Fatal(err)
+					return
 				}
-				fmt.Println(*data)
+				_ = livetiming.ParseJSON(msg)
 				r.broadcast(line)
 				// FIXME: Need to remove this in place of logic that pauses at appropriate times to simulate replay
 				time.Sleep(1 * time.Second)
 			}
 		}()
 	}
+	return nil
 }
 
 func (r *Replayer) Subscribe() <-chan any {
-	ch := make(chan any, 64)
+	ch := make(chan any)
 	r.subscribers = append(r.subscribers, &ch)
 	return ch
 }
@@ -105,23 +102,4 @@ func (r *Replayer) Close() error {
 		}
 	}
 	return errors.Join(errs...)
-}
-
-func lineCounter(r io.Reader) (int, error) {
-	buf := make([]byte, 32*1024)
-	count := 0
-	lineSep := []byte{'\n'}
-
-	for {
-		c, err := r.Read(buf)
-		count += bytes.Count(buf[:c], lineSep)
-
-		switch {
-		case err == io.EOF:
-			return count, nil
-
-		case err != nil:
-			return count, err
-		}
-	}
 }

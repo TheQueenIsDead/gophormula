@@ -26,10 +26,8 @@ func main() {
 
 	for {
 		select {
-		//case message := <-ch:
-		case <-ch:
-			// TODO: Handle the message!
-			continue
+		case m := <-ch:
+			fmt.Println(m)
 		}
 	}
 }

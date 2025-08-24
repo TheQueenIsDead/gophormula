@@ -159,7 +159,6 @@ func (c *Client) Invoke(req InvocationRequest) (InvocationResponse, error) {
 	if err != nil {
 		return InvocationResponse{}, err
 	}
-	fmt.Println("Sending", string(b))
 
 	// TODO: Fixme, actually get a response.
 	return InvocationResponse{}, nil

@@ -10,6 +10,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 )
 
 var messageRegistry = make(map[string]reflect.Type)
@@ -59,7 +60,7 @@ func ParseJSON(msg json.RawMessage) any {
 	if err := json.Unmarshal(msg, &r); err == nil {
 		for topic, data := range r {
 			// TODO: Something!
-			fmt.Println(topic, data)
+			_ = fmt.Sprint(topic, data)
 		}
 		return r
 	}
@@ -110,4 +111,36 @@ func Parse(topic string, data []byte) (any, error) {
 	}
 
 	return nil, fmt.Errorf("unknown message topic: %s", topic)
+}
+
+func ExtractReplayData(line string) (*time.Time, json.RawMessage, error) {
+
+	trimmed := bytes.TrimPrefix([]byte(line), []byte{0xEF, 0xBB, 0xBF})
+	line = string(trimmed)
+
+	// Check for a timestamp and remove if so
+	var timestamp *time.Time
+	if len(line) > 12 {
+		ts := line[:12]
+		t, err := time.Parse("15:04:05.999", ts)
+		if err == nil {
+			line = line[12:]
+			timestamp = &t
+		}
+	}
+
+	line = strings.TrimSpace(line)
+
+	// Compressed data
+	if !strings.HasPrefix(line, "{") {
+		decompressed, err := Decompress([]byte(line))
+		if err != nil {
+			return timestamp, nil, err
+		}
+		return timestamp, decompressed, nil
+	}
+
+	// Non compressed data - post sanitization
+	return timestamp, json.RawMessage(line), nil
+
 }
