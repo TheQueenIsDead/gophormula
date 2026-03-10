@@ -17,6 +17,28 @@ var flexTimeFormats = []string{
 	"2006-01-02T15:04:05",
 }
 
+// FlexSlice handles F1 JSON fields that arrive as arrays in the initial state
+// snapshot but as index-keyed objects in incremental updates
+// (e.g. {"0": {...}, "1": {...}}). Both forms are normalised to map[string]T.
+type FlexSlice[T any] map[string]T
+
+func (fs *FlexSlice[T]) UnmarshalJSON(data []byte) error {
+	var arr []T
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*fs = make(FlexSlice[T], len(arr))
+		for i, v := range arr {
+			(*fs)[fmt.Sprintf("%d", i)] = v
+		}
+		return nil
+	}
+	var m map[string]T
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	*fs = m
+	return nil
+}
+
 func (ft *FlexTime) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -90,15 +112,17 @@ type ChampionshipPrediction struct {
 	Teams   map[string]TeamPrediction   `json:"Teams"`
 }
 
+type ContentStream struct {
+	Type     string   `json:"Type"`
+	Name     string   `json:"Name"`
+	Language string   `json:"Language"`
+	Uri      string   `json:"Uri"`
+	Utc      FlexTime `json:"Utc"`
+	Path     string   `json:"Path,omitempty"`
+}
+
 type ContentStreams struct {
-	Streams []struct {
-		Type     string `json:"Type"`
-		Name     string `json:"Name"`
-		Language string `json:"Language"`
-		Uri      string `json:"Uri"`
-		Utc      string `json:"Utc"`
-		Path     string `json:"Path,omitempty"`
-	} `json:"Streams"`
+	Streams FlexSlice[ContentStream] `json:"Streams"`
 }
 
 type Tyre struct {
@@ -246,8 +270,8 @@ type LapCount struct {
 }
 
 type LapSeriesEntry struct {
-	RacingNumber string   `json:"RacingNumber"`
-	LapPosition  []string `json:"LapPosition"`
+	RacingNumber string            `json:"RacingNumber"`
+	LapPosition  FlexSlice[string] `json:"LapPosition"`
 }
 
 type LapSeries map[string]LapSeriesEntry
@@ -272,7 +296,7 @@ type RaceControlMessage struct {
 }
 
 type RaceControlMessages struct {
-	Messages []RaceControlMessage `json:"Messages"`
+	Messages FlexSlice[RaceControlMessage] `json:"Messages"`
 }
 
 type SessionDataPoint struct {
@@ -281,7 +305,7 @@ type SessionDataPoint struct {
 }
 
 type SessionData struct {
-	Series []SessionDataPoint `json:"Series"`
+	Series FlexSlice[SessionDataPoint] `json:"Series"`
 }
 
 type Meeting struct {
@@ -302,18 +326,16 @@ type Meeting struct {
 }
 
 type SessionInfo struct {
-	Meeting       Meeting `json:"Meeting"`
-	SessionStatus string  `json:"SessionStatus"`
-	ArchiveStatus struct {
-		Status string `json:"Status"`
-	} `json:"ArchiveStatus"`
-	Key       int      `json:"Key"`
-	Type      string   `json:"Type"`
-	Name      string   `json:"Name"`
-	StartDate FlexTime `json:"StartDate"`
-	EndDate   FlexTime `json:"EndDate"`
-	GmtOffset string   `json:"GmtOffset"`
-	Path      string   `json:"Path"`
+	Meeting       Meeting       `json:"Meeting"`
+	SessionStatus string        `json:"SessionStatus"`
+	ArchiveStatus ArchiveStatus `json:"ArchiveStatus"`
+	Key           int           `json:"Key"`
+	Type          string        `json:"Type"`
+	Name          string        `json:"Name"`
+	StartDate     FlexTime      `json:"StartDate"`
+	EndDate       FlexTime      `json:"EndDate"`
+	GmtOffset     string        `json:"GmtOffset"`
+	Path          string        `json:"Path"`
 }
 
 type SessionStatus struct {
@@ -328,7 +350,7 @@ type TeamRadioCapture struct {
 }
 
 type TeamRadio struct {
-	Captures []TeamRadioCapture `json:"Captures"`
+	Captures FlexSlice[TeamRadioCapture] `json:"Captures"`
 }
 
 type Stint struct {
@@ -343,10 +365,10 @@ type Stint struct {
 }
 
 type TimingAppDataLine struct {
-	RacingNumber string  `json:"RacingNumber"`
-	Line         int     `json:"Line"`
-	GridPos      string  `json:"GridPos"`
-	Stints       []Stint `json:"Stints"`
+	RacingNumber string           `json:"RacingNumber"`
+	Line         int              `json:"Line"`
+	GridPos      string           `json:"GridPos"`
+	Stints       FlexSlice[Stint] `json:"Stints"`
 }
 
 type TimingAppData struct {
@@ -358,16 +380,18 @@ type Interval struct {
 	Catching bool   `json:"Catching"`
 }
 
+type Segment struct {
+	Status int `json:"Status"`
+}
+
 type Sector struct {
-	Stopped       bool   `json:"Stopped"`
-	PreviousValue string `json:"PreviousValue"`
-	Segments      []struct {
-		Status int `json:"Status"`
-	} `json:"Segments"`
-	Value           string `json:"Value"`
-	Status          int    `json:"Status"`
-	OverallFastest  bool   `json:"OverallFastest"`
-	PersonalFastest bool   `json:"PersonalFastest"`
+	Stopped         bool               `json:"Stopped"`
+	PreviousValue   string             `json:"PreviousValue"`
+	Segments        FlexSlice[Segment] `json:"Segments"`
+	Value           string             `json:"Value"`
+	Status          int                `json:"Status"`
+	OverallFastest  bool               `json:"OverallFastest"`
+	PersonalFastest bool               `json:"PersonalFastest"`
 }
 
 type Speed struct {
@@ -383,28 +407,23 @@ type LapTime struct {
 }
 
 type TimingDataLine struct {
-	GapToLeader             string           `json:"GapToLeader"`
-	IntervalToPositionAhead Interval         `json:"IntervalToPositionAhead"`
-	Line                    int              `json:"Line"`
-	Position                string           `json:"Position"`
-	ShowPosition            bool             `json:"ShowPosition"`
-	RacingNumber            string           `json:"RacingNumber"`
-	Retired                 bool             `json:"Retired"`
-	InPit                   bool             `json:"InPit"`
-	PitOut                  bool             `json:"PitOut"`
-	Stopped                 bool             `json:"Stopped"`
-	Status                  int              `json:"Status"`
-	NumberOfLaps            int              `json:"NumberOfLaps"`
-	NumberOfPitStops        int              `json:"NumberOfPitStops"`
-	Sectors                 []Sector         `json:"Sectors"`
-	Speeds                  map[string]Speed `json:"Speeds"`
-	BestLapTime             LapTime          `json:"BestLapTime"`
-	LastLapTime             struct {
-		Value           string `json:"Value"`
-		Status          int    `json:"Status"`
-		OverallFastest  bool   `json:"OverallFastest"`
-		PersonalFastest bool   `json:"PersonalFastest"`
-	} `json:"LastLapTime"`
+	GapToLeader             string            `json:"GapToLeader"`
+	IntervalToPositionAhead Interval          `json:"IntervalToPositionAhead"`
+	Line                    int               `json:"Line"`
+	Position                string            `json:"Position"`
+	ShowPosition            bool              `json:"ShowPosition"`
+	RacingNumber            string            `json:"RacingNumber"`
+	Retired                 bool              `json:"Retired"`
+	InPit                   bool              `json:"InPit"`
+	PitOut                  bool              `json:"PitOut"`
+	Stopped                 bool              `json:"Stopped"`
+	Status                  int               `json:"Status"`
+	NumberOfLaps            int               `json:"NumberOfLaps"`
+	NumberOfPitStops        int               `json:"NumberOfPitStops"`
+	Sectors                 FlexSlice[Sector] `json:"Sectors"`
+	Speeds                  map[string]Speed  `json:"Speeds"`
+	BestLapTime             LapTime           `json:"BestLapTime"`
+	LastLapTime             Speed             `json:"LastLapTime"`
 }
 
 type TimingData struct {
@@ -426,7 +445,7 @@ type TimingStatsLine struct {
 	Line                int                 `json:"Line"`
 	RacingNumber        string              `json:"RacingNumber"`
 	PersonalBestLapTime PersonalBestLapTime `json:"PersonalBestLapTime"`
-	BestSectors         []Best              `json:"BestSectors"`
+	BestSectors         FlexSlice[Best]     `json:"BestSectors"`
 	BestSpeeds          map[string]Best     `json:"BestSpeeds"`
 }
 
@@ -461,8 +480,8 @@ type TopThreeLine struct {
 }
 
 type TopThree struct {
-	Withheld bool           `json:"Withheld"`
-	Lines    []TopThreeLine `json:"Lines"`
+	Withheld bool                    `json:"Withheld"`
+	Lines    FlexSlice[TopThreeLine] `json:"Lines"`
 }
 
 type TrackStatus struct {
@@ -498,5 +517,5 @@ type WeatherDataPoint struct {
 }
 
 type WeatherDataSeries struct {
-	Series []WeatherDataPoint `json:"Series"`
+	Series FlexSlice[WeatherDataPoint] `json:"Series"`
 }
