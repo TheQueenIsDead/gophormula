@@ -13,13 +13,27 @@ import (
 	"time"
 )
 
+type fileEntry struct {
+	file  os.File
+	topic string
+}
+
 type Replayer struct {
-	files       []os.File
+	files       []fileEntry
 	subscribers []*chan any
 }
 
 func New() *Replayer {
 	return &Replayer{}
+}
+
+// topicFromFilename strips the .jsonStream or .json extension from a filename
+// to derive the F1 topic name. e.g. "CarData.z.jsonStream" → "CarData.z".
+func topicFromFilename(name string) string {
+	base := filepath.Base(name)
+	base = strings.TrimSuffix(base, ".jsonStream")
+	base = strings.TrimSuffix(base, ".json")
+	return base
 }
 
 func (r *Replayer) ParseGlob(glob string) error {
@@ -47,7 +61,10 @@ func (r *Replayer) ParseGlob(glob string) error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		r.files = append(r.files, *file)
+		r.files = append(r.files, fileEntry{
+			file:  *file,
+			topic: topicFromFilename(match),
+		})
 	}
 
 	return nil
@@ -80,9 +97,9 @@ func (r *Replayer) Start() error {
 	// points within the session onto a single real-time axis.
 	var sessionOrigin *time.Time
 	for i := range r.files {
-		ts := peekFirstTimestamp(&r.files[i])
-		if _, err := r.files[i].Seek(0, io.SeekStart); err != nil {
-			return fmt.Errorf("rewinding %s: %w", r.files[i].Name(), err)
+		ts := peekFirstTimestamp(&r.files[i].file)
+		if _, err := r.files[i].file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewinding %s: %w", r.files[i].file.Name(), err)
 		}
 		if ts == nil {
 			continue
@@ -96,12 +113,11 @@ func (r *Replayer) Start() error {
 	wallStart := time.Now()
 
 	for i := range r.files {
-		go func(f *os.File) {
+		go func(f *os.File, topic string) {
 			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
-				line := scanner.Text()
-				ts, msg, err := livetiming.ExtractReplayData(line)
-				if err != nil {
+				ts, msg, err := livetiming.ExtractReplayData(scanner.Text())
+				if err != nil || msg == nil {
 					continue
 				}
 				// Sleep until the wall-clock time that corresponds to this
@@ -112,10 +128,14 @@ func (r *Replayer) Start() error {
 						time.Sleep(d)
 					}
 				}
-				_ = livetiming.ParseJSON(msg)
-				r.broadcast(line)
+				parsed, err := livetiming.Parse(topic, msg)
+				if err != nil {
+					log.Printf("error parsing %s: %v", topic, err)
+					continue
+				}
+				r.broadcast(parsed)
 			}
-		}(&r.files[i])
+		}(&r.files[i].file, r.files[i].topic)
 	}
 	return nil
 }
@@ -133,11 +153,11 @@ func (r *Replayer) StartAndSubscribe() <-chan any {
 
 func (r *Replayer) Close() error {
 	var errs []error
-	for _, file := range r.files {
-		err := file.Close()
+	for _, entry := range r.files {
+		err := entry.file.Close()
 		if err != nil {
 			errs = append(errs, err)
-			log.Printf("error closing file: %x\n", file.Name())
+			log.Printf("error closing file: %x\n", entry.file.Name())
 		}
 	}
 	return errors.Join(errs...)

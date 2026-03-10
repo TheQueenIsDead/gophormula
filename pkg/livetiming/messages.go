@@ -2,8 +2,34 @@ package livetiming
 
 import (
 	"encoding/json"
+	t "fmt"
 	"time"
 )
+
+// FlexTime wraps time.Time to handle F1 date strings that may omit the
+// timezone offset (e.g. "2025-07-06T15:00:00" as well as RFC3339).
+type FlexTime struct{ time.Time }
+
+var flexTimeFormats = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999",
+	"2006-01-02T15:04:05",
+}
+
+func (ft *FlexTime) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	for _, layout := range flexTimeFormats {
+		if t, err := time.Parse(layout, s); err == nil {
+			ft.Time = t
+			return nil
+		}
+	}
+	return fmt.Errorf("cannot parse time %q", s)
+}
 
 type ArchiveStatus struct {
 	Status string `json:"Status"`
