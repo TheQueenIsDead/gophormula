@@ -115,6 +115,7 @@ func Parse(topic string, data []byte) (any, error) {
 
 func ExtractReplayData(line string) (*time.Time, json.RawMessage, error) {
 
+	// Remove UTF8 BOM if present at the start of the line
 	trimmed := bytes.TrimPrefix([]byte(line), []byte{0xEF, 0xBB, 0xBF})
 	line = string(trimmed)
 
@@ -142,5 +143,4 @@ func ExtractReplayData(line string) (*time.Time, json.RawMessage, error) {
 
 	// Non compressed data - post sanitization
 	return timestamp, json.RawMessage(line), nil
-
 }

@@ -61,12 +61,10 @@ func (r *Replayer) broadcast(message any) {
 // FIXME: Need to account for stream data starting at different times in different files
 func (r *Replayer) Start() error {
 	for _, file := range r.files {
-		//topic := filepath.Base(file.Name())
 		go func() {
 			scanner := bufio.NewScanner(&file)
 			for scanner.Scan() {
 				line := scanner.Text()
-				// TODO: FIXME
 				_, msg, err := livetiming.ExtractReplayData(line)
 				if err != nil {
 					return
