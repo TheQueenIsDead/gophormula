@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
 )
@@ -31,40 +30,45 @@ var pageTmpl = template.Must(
 // Hub manages SSE subscribers and broadcasts log lines to all connected clients.
 type Hub struct {
 	mu      sync.Mutex
-	clients map[chan string]struct{}
+	clients map[chan entry]struct{}
 	dataDir string
 }
 
 func NewHub(dataDir string) *Hub {
 	return &Hub{
-		clients: make(map[chan string]struct{}),
+		clients: make(map[chan entry]struct{}),
 		dataDir: dataDir,
 	}
 }
 
-func (h *Hub) subscribe() chan string {
-	ch := make(chan string, 64)
+func (h *Hub) subscribe() chan entry {
+	ch := make(chan entry, 64)
 	h.mu.Lock()
 	h.clients[ch] = struct{}{}
 	h.mu.Unlock()
 	return ch
 }
 
-func (h *Hub) unsubscribe(ch chan string) {
+func (h *Hub) unsubscribe(ch chan entry) {
 	h.mu.Lock()
 	delete(h.clients, ch)
 	h.mu.Unlock()
 	close(ch)
 }
 
-// Broadcast sends a log line to all connected SSE clients, dropping any that
+type entry struct {
+	ts   string
+	body string
+}
+
+// Broadcast sends a log entry to all connected SSE clients, dropping any that
 // are too slow to consume (non-blocking send).
-func (h *Hub) Broadcast(msg string) {
+func (h *Hub) Broadcast(ts, body string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.clients {
 		select {
-		case ch <- msg:
+		case ch <- entry{ts: ts, body: body}:
 		default:
 		}
 	}
@@ -112,14 +116,13 @@ func (h *Hub) Events(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		select {
-		case msg, ok := <-ch:
+		case e, ok := <-ch:
 			if !ok {
 				return
 			}
-			ts := time.Now().Format("15:04:05.000")
 			fragment := fmt.Sprintf(
 				`<div class="entry"><span class="ts">%s</span><span class="body">%s</span></div>`,
-				ts, html.EscapeString(msg),
+				html.EscapeString(e.ts), html.EscapeString(e.body),
 			)
 			if err := sse.PatchElements(fragment, datastar.WithSelectorID("log"), datastar.WithModeAppend()); err != nil {
 				return

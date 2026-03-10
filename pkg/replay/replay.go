@@ -20,6 +20,13 @@ type fileEntry struct {
 	isStream bool // true for .jsonStream (line-by-line), false for .json (whole document)
 }
 
+// Message pairs a parsed livetiming value with the session timestamp from the
+// stream file. Timestamp is nil for keyframe messages (no line timestamp).
+type Message struct {
+	Timestamp *time.Time
+	Value     any
+}
+
 type Replayer struct {
 	files       []fileEntry
 	subscribers []*chan any
@@ -145,7 +152,7 @@ func (r *Replayer) Start() error {
 						log.Printf("error parsing %s: %v", topic, err)
 						continue
 					}
-					r.broadcast(parsed)
+					r.broadcast(Message{Timestamp: ts, Value: parsed})
 				}
 			}(&r.files[i].file, r.files[i].topic)
 		} else {
@@ -162,7 +169,7 @@ func (r *Replayer) Start() error {
 					log.Printf("error parsing keyframe %s: %v", topic, err)
 					return
 				}
-				r.broadcast(parsed)
+				r.broadcast(Message{Timestamp: nil, Value: parsed})
 			}(&r.files[i].file, r.files[i].topic)
 		}
 	}

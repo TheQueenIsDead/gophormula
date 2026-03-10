@@ -45,8 +45,13 @@ func replayHandler(hub *dash.Hub) http.HandlerFunc {
 		}
 		ch := r2.StartAndSubscribe()
 		go func() {
-			for msg := range ch {
-				hub.Broadcast(format(msg))
+			for m := range ch {
+				msg := m.(replay.Message)
+				ts := "--:--:--"
+				if msg.Timestamp != nil {
+					ts = msg.Timestamp.Format("15:04:05")
+				}
+				hub.Broadcast(ts, format(msg.Value))
 			}
 		}()
 
