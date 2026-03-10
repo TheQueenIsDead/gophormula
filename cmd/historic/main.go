@@ -69,7 +69,7 @@ func main() {
 		panic(err)
 	}
 
-	var files []*url.URL
+	files := []*url.URL{base.JoinPath("Index.json")}
 	for _, feed := range index.GetFeeds() {
 		if feed.KeyFramePath != "" {
 			files = append(files, base.JoinPath(feed.KeyFramePath))
