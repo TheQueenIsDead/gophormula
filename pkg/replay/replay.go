@@ -3,7 +3,9 @@ package replay
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"gophormula/pkg/livetiming"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -58,23 +60,62 @@ func (r *Replayer) broadcast(message any) {
 	}
 }
 
-// FIXME: Need to account for stream data starting at different times in different files
+// peekFirstTimestamp reads the first line with a valid timestamp from f without
+// consuming the file — the caller must seek f back to 0 after calling this.
+func peekFirstTimestamp(f *os.File) *time.Time {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		ts, _, _ := livetiming.ExtractReplayData(scanner.Text())
+		if ts != nil {
+			return ts
+		}
+	}
+	return nil
+}
+
 func (r *Replayer) Start() error {
-	for _, file := range r.files {
-		go func() {
-			scanner := bufio.NewScanner(&file)
+	// Pre-scan every file to find the session origin — the earliest timestamp
+	// across all files. All files are rewound afterwards so playback starts
+	// from the beginning. This synchronises files that begin at different
+	// points within the session onto a single real-time axis.
+	var sessionOrigin *time.Time
+	for i := range r.files {
+		ts := peekFirstTimestamp(&r.files[i])
+		if _, err := r.files[i].Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewinding %s: %w", r.files[i].Name(), err)
+		}
+		if ts == nil {
+			continue
+		}
+		if sessionOrigin == nil || ts.Before(*sessionOrigin) {
+			t := *ts
+			sessionOrigin = &t
+		}
+	}
+
+	wallStart := time.Now()
+
+	for i := range r.files {
+		go func(f *os.File) {
+			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
 				line := scanner.Text()
-				_, msg, err := livetiming.ExtractReplayData(line)
+				ts, msg, err := livetiming.ExtractReplayData(line)
 				if err != nil {
-					return
+					continue
+				}
+				// Sleep until the wall-clock time that corresponds to this
+				// message's session timestamp, keeping all files in sync.
+				if ts != nil && sessionOrigin != nil {
+					offset := ts.Sub(*sessionOrigin)
+					if d := time.Until(wallStart.Add(offset)); d > 0 {
+						time.Sleep(d)
+					}
 				}
 				_ = livetiming.ParseJSON(msg)
 				r.broadcast(line)
-				// FIXME: Need to remove this in place of logic that pauses at appropriate times to simulate replay
-				time.Sleep(1 * time.Second)
 			}
-		}()
+		}(&r.files[i])
 	}
 	return nil
 }
