@@ -53,37 +53,59 @@ func Decompress(data []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func ParseJSON(msg json.RawMessage) any {
-
-	// Attempt to parse out JSON from the 'R' incremental update mode.
-	var r map[string]json.RawMessage
-	if err := json.Unmarshal(msg, &r); err == nil {
-		for topic, data := range r {
-			// TODO: Something!
-			_ = fmt.Sprint(topic, data)
-		}
-		return r
+func ParseJSON(msg json.RawMessage) []any {
+	if len(msg) == 0 {
+		return nil
 	}
 
-	// Conversely, attempt to parse JSON from the standard 'M' message array.
-	var m [][]json.RawMessage
-	if err := json.Unmarshal(msg, &m); err == nil {
-		for _, message := range m {
-			if len(message) != 2 {
-				log.Printf("invalid message format in M block: expected 2 elements, got %d", len(message))
+	// M format: array of SignalR hub invocations sent as incremental updates.
+	// e.g. [{"H":"Streaming","M":"feed","A":["TopicName", data, "timestamp"]}]
+	if msg[0] == '[' {
+		var invocations []struct {
+			A []json.RawMessage `json:"A"`
+		}
+		if err := json.Unmarshal(msg, &invocations); err != nil {
+			log.Printf("error unmarshalling M invocations: %v", err)
+			return nil
+		}
+		var results []any
+		for _, inv := range invocations {
+			if len(inv.A) < 2 {
+				log.Printf("invalid invocation: expected at least 2 arguments, got %d", len(inv.A))
 				continue
 			}
 			var topic string
-			if err := json.Unmarshal(message[0], &topic); err != nil {
-				log.Printf("error unmarshalling topic from M block: %v", err)
+			if err := json.Unmarshal(inv.A[0], &topic); err != nil {
+				log.Printf("error unmarshalling topic from invocation: %v", err)
 				continue
 			}
-			// TODO: Something!
-			fmt.Println(topic, message[1])
+			parsed, err := Parse(topic, inv.A[1])
+			if err != nil {
+				log.Printf("error parsing topic %s: %v", topic, err)
+				continue
+			}
+			results = append(results, parsed)
 		}
-		return m
+		return results
 	}
-	return nil
+
+	// R format: full state snapshot, a map of topic -> data.
+	// e.g. {"Heartbeat": {...}, "CarData.z": "base64..."}
+	var snapshot map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &snapshot); err != nil {
+		log.Printf("error unmarshalling R snapshot: %v", err)
+		return nil
+	}
+	var results []any
+	for topic, data := range snapshot {
+		parsed, err := Parse(topic, data)
+		if err != nil {
+			log.Printf("error parsing topic %s: %v", topic, err)
+			continue
+		}
+		results = append(results, parsed)
+	}
+	return results
 }
 
 func Parse(topic string, data []byte) (any, error) {
