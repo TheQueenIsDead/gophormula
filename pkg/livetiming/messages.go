@@ -2,7 +2,7 @@ package livetiming
 
 import (
 	"encoding/json"
-	t "fmt"
+	"fmt"
 	"time"
 )
 
@@ -36,11 +36,11 @@ type ArchiveStatus struct {
 }
 
 type AudioStream struct {
-	Name     string    `json:"Name"`
-	Language string    `json:"Language"`
-	Uri      string    `json:"Uri"`
-	Path     string    `json:"Path"`
-	Utc      time.Time `json:"Utc"`
+	Name     string   `json:"Name"`
+	Language string   `json:"Language"`
+	Uri      string   `json:"Uri"`
+	Path     string   `json:"Path"`
+	Utc      FlexTime `json:"Utc"`
 }
 
 type AudioStreams struct {
@@ -61,7 +61,7 @@ type Car struct {
 }
 
 type CarDataEntry struct {
-	Utc  time.Time      `json:"Utc"`
+	Utc  FlexTime       `json:"Utc"`
 	Cars map[string]Car `json:"Cars"`
 }
 
@@ -150,13 +150,13 @@ type DriverScore struct {
 }
 
 type ExtrapolatedClock struct {
-	Utc           time.Time `json:"Utc"`
-	Remaining     string    `json:"Remaining"`
-	Extrapolating bool      `json:"Extrapolating"`
+	Utc           FlexTime `json:"Utc"`
+	Remaining     string   `json:"Remaining"`
+	Extrapolating bool     `json:"Extrapolating"`
 }
 
 type Heartbeat struct {
-	Utc time.Time `json:"Utc"`
+	Utc FlexTime `json:"Utc"`
 }
 
 type Feed struct {
@@ -262,13 +262,13 @@ type PositionData struct {
 }
 
 type RaceControlMessage struct {
-	Utc      time.Time `json:"Utc"`
-	Lap      int       `json:"Lap"`
-	Category string    `json:"Category"`
-	Message  string    `json:"Message"`
-	Flag     string    `json:"Flag,omitempty"`
-	Scope    string    `json:"Scope,omitempty"`
-	Sector   int       `json:"Sector,omitempty"`
+	Utc      FlexTime `json:"Utc"`
+	Lap      int      `json:"Lap"`
+	Category string   `json:"Category"`
+	Message  string   `json:"Message"`
+	Flag     string   `json:"Flag,omitempty"`
+	Scope    string   `json:"Scope,omitempty"`
+	Sector   int      `json:"Sector,omitempty"`
 }
 
 type RaceControlMessages struct {
@@ -276,8 +276,8 @@ type RaceControlMessages struct {
 }
 
 type SessionDataPoint struct {
-	Utc time.Time `json:"Utc"`
-	Lap int       `json:"Lap"`
+	Utc FlexTime `json:"Utc"`
+	Lap int      `json:"Lap"`
 }
 
 type SessionData struct {
@@ -307,13 +307,13 @@ type SessionInfo struct {
 	ArchiveStatus struct {
 		Status string `json:"Status"`
 	} `json:"ArchiveStatus"`
-	Key       int       `json:"Key"`
-	Type      string    `json:"Type"`
-	Name      string    `json:"Name"`
-	StartDate time.Time `json:"StartDate"`
-	EndDate   time.Time `json:"EndDate"`
-	GmtOffset string    `json:"GmtOffset"`
-	Path      string    `json:"Path"`
+	Key       int      `json:"Key"`
+	Type      string   `json:"Type"`
+	Name      string   `json:"Name"`
+	StartDate FlexTime `json:"StartDate"`
+	EndDate   FlexTime `json:"EndDate"`
+	GmtOffset string   `json:"GmtOffset"`
+	Path      string   `json:"Path"`
 }
 
 type SessionStatus struct {
@@ -322,9 +322,9 @@ type SessionStatus struct {
 }
 
 type TeamRadioCapture struct {
-	Utc          time.Time `json:"Utc"`
-	RacingNumber string    `json:"RacingNumber"`
-	Path         string    `json:"Path"`
+	Utc          FlexTime `json:"Utc"`
+	RacingNumber string   `json:"RacingNumber"`
+	Path         string   `json:"Path"`
 }
 
 type TeamRadio struct {
@@ -436,8 +436,8 @@ type TimingStats struct {
 }
 
 type TlaRcm struct {
-	Timestamp time.Time `json:"Timestamp"`
-	Message   string    `json:"Message"`
+	Timestamp FlexTime `json:"Timestamp"`
+	Message   string   `json:"Message"`
 }
 
 type TopThreeLine struct {
@@ -493,7 +493,7 @@ type WeatherData struct {
 }
 
 type WeatherDataPoint struct {
-	Timestamp time.Time   `json:"Timestamp"`
+	Timestamp FlexTime    `json:"Timestamp"`
 	Weather   WeatherData `json:"Weather"`
 }
 
