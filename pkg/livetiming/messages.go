@@ -279,6 +279,9 @@ type LapSeries map[string]LapSeriesEntry
 // PitLaneTimeCollection is a message that is streamed, but no data has been observed yet.
 type PitLaneTimeCollection struct{}
 
+// SPFeed is a message that is streamed, but no data has been observed yet.
+type SPFeed struct{}
+
 // PositionData defines the structure for position data.
 // The actual data is compressed and needs to be handled accordingly.
 type PositionData struct {

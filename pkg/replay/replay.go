@@ -2,6 +2,7 @@ package replay
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"gophormula/pkg/livetiming"
@@ -14,8 +15,9 @@ import (
 )
 
 type fileEntry struct {
-	file  os.File
-	topic string
+	file     os.File
+	topic    string
+	isStream bool // true for .jsonStream (line-by-line), false for .json (whole document)
 }
 
 type Replayer struct {
@@ -29,11 +31,13 @@ func New() *Replayer {
 
 // topicFromFilename strips the .jsonStream or .json extension from a filename
 // to derive the F1 topic name. e.g. "CarData.z.jsonStream" → "CarData.z".
-func topicFromFilename(name string) string {
+// Returns the topic name and whether this is a stream file (vs a keyframe file).
+func topicFromFilename(name string) (topic string, isStream bool) {
 	base := filepath.Base(name)
-	base = strings.TrimSuffix(base, ".jsonStream")
-	base = strings.TrimSuffix(base, ".json")
-	return base
+	if strings.HasSuffix(base, ".jsonStream") {
+		return strings.TrimSuffix(base, ".jsonStream"), true
+	}
+	return strings.TrimSuffix(base, ".json"), false
 }
 
 func (r *Replayer) ParseGlob(glob string) error {
@@ -49,8 +53,9 @@ func (r *Replayer) ParseGlob(glob string) error {
 	}
 
 	for _, match := range matches {
-		matchIsHiddenFile := strings.HasSuffix(match, ".")
-		matchIsIndex := match == "Index.json"
+		base := filepath.Base(match)
+		matchIsHiddenFile := strings.HasPrefix(base, ".")
+		matchIsIndex := base == "Index.json"
 		if matchIsHiddenFile || matchIsIndex {
 			continue
 		}
@@ -61,9 +66,11 @@ func (r *Replayer) ParseGlob(glob string) error {
 		if err != nil {
 			log.Fatal(err)
 		}
+		topic, isStream := topicFromFilename(match)
 		r.files = append(r.files, fileEntry{
-			file:  *file,
-			topic: topicFromFilename(match),
+			file:     *file,
+			topic:    topic,
+			isStream: isStream,
 		})
 	}
 
@@ -97,6 +104,9 @@ func (r *Replayer) Start() error {
 	// points within the session onto a single real-time axis.
 	var sessionOrigin *time.Time
 	for i := range r.files {
+		if !r.files[i].isStream {
+			continue // keyframe files have no timestamps; skip in pre-scan
+		}
 		ts := peekFirstTimestamp(&r.files[i].file)
 		if _, err := r.files[i].file.Seek(0, io.SeekStart); err != nil {
 			return fmt.Errorf("rewinding %s: %w", r.files[i].file.Name(), err)
@@ -113,29 +123,48 @@ func (r *Replayer) Start() error {
 	wallStart := time.Now()
 
 	for i := range r.files {
-		go func(f *os.File, topic string) {
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				ts, msg, err := livetiming.ExtractReplayData(scanner.Text())
-				if err != nil || msg == nil {
-					continue
-				}
-				// Sleep until the wall-clock time that corresponds to this
-				// message's session timestamp, keeping all files in sync.
-				if ts != nil && sessionOrigin != nil {
-					offset := ts.Sub(*sessionOrigin)
-					if d := time.Until(wallStart.Add(offset)); d > 0 {
-						time.Sleep(d)
+		if r.files[i].isStream {
+			go func(f *os.File, topic string) {
+				scanner := bufio.NewScanner(f)
+				scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+				for scanner.Scan() {
+					ts, msg, err := livetiming.ExtractReplayData(scanner.Text())
+					if err != nil || msg == nil {
+						continue
 					}
+					// Sleep until the wall-clock time that corresponds to this
+					// message's session timestamp, keeping all files in sync.
+					if ts != nil && sessionOrigin != nil {
+						offset := ts.Sub(*sessionOrigin)
+						if d := time.Until(wallStart.Add(offset)); d > 0 {
+							time.Sleep(d)
+						}
+					}
+					parsed, err := livetiming.Parse(topic, msg)
+					if err != nil {
+						log.Printf("error parsing %s: %v", topic, err)
+						continue
+					}
+					r.broadcast(parsed)
 				}
-				parsed, err := livetiming.Parse(topic, msg)
+			}(&r.files[i].file, r.files[i].topic)
+		} else {
+			go func(f *os.File, topic string) {
+				raw, err := io.ReadAll(f)
 				if err != nil {
-					log.Printf("error parsing %s: %v", topic, err)
-					continue
+					log.Printf("error reading keyframe %s: %v", topic, err)
+					return
+				}
+				// Strip UTF-8 BOM if present
+				data := bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
+				parsed, err := livetiming.Parse(topic, data)
+				if err != nil {
+					log.Printf("error parsing keyframe %s: %v", topic, err)
+					return
 				}
 				r.broadcast(parsed)
-			}
-		}(&r.files[i].file, r.files[i].topic)
+			}(&r.files[i].file, r.files[i].topic)
+		}
 	}
 	return nil
 }
