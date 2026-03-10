@@ -282,10 +282,21 @@ type PitLaneTimeCollection struct{}
 // SPFeed is a message that is streamed, but no data has been observed yet.
 type SPFeed struct{}
 
-// PositionData defines the structure for position data.
-// The actual data is compressed and needs to be handled accordingly.
+type PositionEntry struct {
+	Status string `json:"Status"`
+	X      int    `json:"X"`
+	Y      int    `json:"Y"`
+	Z      int    `json:"Z"`
+}
+
+type PositionTimestamp struct {
+	Timestamp string                   `json:"Timestamp"`
+	Entries   map[string]PositionEntry `json:"Entries"`
+}
+
 type PositionData struct {
-	// Placeholder for the compressed data structure
+	Utc      FlexTime            `json:"Utc"`
+	Position []PositionTimestamp `json:"Position"`
 }
 
 type RaceControlMessage struct {

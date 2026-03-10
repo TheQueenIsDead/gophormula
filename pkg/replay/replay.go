@@ -187,6 +187,67 @@ func (r *Replayer) StartAndSubscribe() <-chan any {
 	return r.Subscribe()
 }
 
+// PositionBounds holds the min/max X/Y coordinates seen across all position
+// data in the session, used to normalise car positions onto a fixed canvas.
+type PositionBounds struct {
+	MinX, MaxX, MinY, MaxY int
+	Valid                  bool
+}
+
+// ScanPositionBounds pre-reads the Position.z stream file(s) to determine the
+// circuit-specific coordinate range. All files are rewound afterwards so normal
+// playback via Start() still works.
+func (r *Replayer) ScanPositionBounds() PositionBounds {
+	var b PositionBounds
+	for i := range r.files {
+		fe := &r.files[i]
+		if fe.topic != "Position.z" || !fe.isStream {
+			continue
+		}
+		scanner := bufio.NewScanner(&fe.file)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+		for scanner.Scan() {
+			_, msg, err := livetiming.ExtractReplayData(scanner.Text())
+			if err != nil || msg == nil {
+				continue
+			}
+			parsed, err := livetiming.Parse(fe.topic, msg)
+			if err != nil {
+				continue
+			}
+			pd, ok := parsed.(*livetiming.PositionData)
+			if !ok {
+				continue
+			}
+			for _, pts := range pd.Position {
+				for _, entry := range pts.Entries {
+					x, y := entry.X, entry.Y
+					if !b.Valid {
+						b.MinX, b.MaxX = x, x
+						b.MinY, b.MaxY = y, y
+						b.Valid = true
+					} else {
+						if x < b.MinX {
+							b.MinX = x
+						}
+						if x > b.MaxX {
+							b.MaxX = x
+						}
+						if y < b.MinY {
+							b.MinY = y
+						}
+						if y > b.MaxY {
+							b.MaxY = y
+						}
+					}
+				}
+			}
+		}
+		fe.file.Seek(0, io.SeekStart) //nolint:errcheck
+	}
+	return b
+}
+
 func (r *Replayer) Close() error {
 	var errs []error
 	for _, entry := range r.files {

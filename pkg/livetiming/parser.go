@@ -171,15 +171,16 @@ func ExtractReplayData(line string) (*time.Time, json.RawMessage, error) {
 
 	line = strings.TrimSpace(line)
 
-	// Compressed data
-	if !strings.HasPrefix(line, "{") {
-		decompressed, err := Decompress([]byte(line))
-		if err != nil {
-			return timestamp, nil, err
-		}
-		return timestamp, decompressed, nil
+	// JSON object or JSON string (e.g. quoted base64 for .z topics) — return as-is
+	// so that Parse() can handle decompression for .z topics.
+	if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "\"") {
+		return timestamp, json.RawMessage(line), nil
 	}
 
-	// Non compressed data - post sanitization
-	return timestamp, json.RawMessage(line), nil
+	// Raw compressed data (unquoted base64)
+	decompressed, err := Decompress([]byte(line))
+	if err != nil {
+		return timestamp, nil, err
+	}
+	return timestamp, decompressed, nil
 }

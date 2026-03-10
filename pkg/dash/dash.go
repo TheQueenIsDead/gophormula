@@ -57,8 +57,11 @@ func (h *Hub) unsubscribe(ch chan entry) {
 }
 
 type entry struct {
+	// log entry fields
 	ts   string
 	body string
+	// cars patch (non-empty means this is a car-position update, not a log line)
+	carsFragment string
 }
 
 // Broadcast sends a log entry to all connected SSE clients, dropping any that
@@ -69,6 +72,18 @@ func (h *Hub) Broadcast(ts, body string) {
 	for ch := range h.clients {
 		select {
 		case ch <- entry{ts: ts, body: body}:
+		default:
+		}
+	}
+}
+
+// BroadcastCars sends an SVG fragment that replaces the content of #cars.
+func (h *Hub) BroadcastCars(fragment string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients {
+		select {
+		case ch <- entry{carsFragment: fragment}:
 		default:
 		}
 	}
@@ -120,12 +135,18 @@ func (h *Hub) Events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fragment := fmt.Sprintf(
-				`<div class="entry"><span class="ts">%s</span><span class="body">%s</span></div>`,
-				html.EscapeString(e.ts), html.EscapeString(e.body),
-			)
-			if err := sse.PatchElements(fragment, datastar.WithSelectorID("log"), datastar.WithModeAppend()); err != nil {
-				return
+			if e.carsFragment != "" {
+				if err := sse.PatchElements(e.carsFragment, datastar.WithSelectorID("plot-panel"), datastar.WithModeInner()); err != nil {
+					return
+				}
+			} else {
+				fragment := fmt.Sprintf(
+					`<div class="entry"><span class="ts">%s</span><span class="body">%s</span></div>`,
+					html.EscapeString(e.ts), html.EscapeString(e.body),
+				)
+				if err := sse.PatchElements(fragment, datastar.WithSelectorID("log"), datastar.WithModeAppend()); err != nil {
+					return
+				}
 			}
 		case <-r.Context().Done():
 			return
