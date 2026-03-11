@@ -72,11 +72,14 @@ graph TD
         historic
         replay
         live
+        session
         dash
     end
 
     signalr --> live
     static --> historic --> replay
-    replay --> dash
+    replay --> session
+    live --> session
+    session --> dash
     circuits --> dash
 ```

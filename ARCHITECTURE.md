@@ -24,6 +24,7 @@ gophormula/
     ├── signalr/    # SignalR protocol client
     ├── livetiming/ # F1 data parsing, type definitions, circuit map fetch
     ├── replay/     # File-based pub-sub replay engine with seek support
+    ├── session/    # Source-agnostic F1 session state accumulator
     └── dash/       # SSE-driven web dashboard (Hub, standings, status, SVG track map)
 ```
 
@@ -34,7 +35,8 @@ gophormula/
 | `pkg/signalr` | SignalR protocol (negotiation, handshake, WebSocket transport) |
 | `pkg/livetiming` | F1 message types, decompression, reflection-based parser, Multiviewer circuit map client |
 | `pkg/replay` | File-based pub-sub replay with seek/fast-forward and subscriber channels |
-| `pkg/dash` | SSE hub, HTTP handlers, standings accumulator, status accumulator, SVG track renderer |
+| `pkg/session` | Source-agnostic session state machine; accumulates race state via `Apply(any) bool` |
+| `pkg/dash` | SSE hub, HTTP handlers, standings renderer, status renderer, SVG track map |
 
 ---
 
@@ -97,7 +99,10 @@ Bufio scanners for line-by-line file reading, streaming JSON parsing from HTTP �
 `cmd/historic` uses `sync.WaitGroup` for concurrent feed downloads with clean goroutine coordination.
 
 ### 6. Incremental State Accumulation
-The dashboard accumulates `TimingData`, `DriverList`, and status bar values server-side so that any newly connected client receives the full current state, and so that seek/fast-forward correctly seeds standings before real-time playback begins.
+`pkg/session.Session` accumulates all race state (`TimingData`, `DriverList`, `LapCount`, weather, track/session status, clock) via a single `Apply(any) bool` method. It is source-agnostic — the same struct is usable for live SignalR feeds or file replay. The dashboard feeds messages through `Session` so that any newly connected client receives the full current state and seek/fast-forward correctly seeds standings before real-time playback begins.
+
+### 7. Structured Logging
+All packages use `log/slog` with `slog.Default()`. Each `cmd/` binary reads a `LOG_LEVEL` environment variable at startup (`DEBUG`, `INFO`, `WARN`, `ERROR`), defaulting to `INFO`.
 
 ---
 
@@ -124,7 +129,7 @@ HTTP operations in `cmd/historic` and WebSocket operations in `pkg/signalr` have
 ### Test Coverage
 
 **5. Very limited tests**
-Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for SignalR protocol, replay timing, or message type registration. Integration tests against recorded sessions would provide high confidence.
+Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for `pkg/session` state merging, SignalR protocol, or replay timing. The `Session.Apply` / `mergeTimingData` logic (especially `*bool` delta semantics) is a good candidate for table-driven tests.
 
 ---
 
@@ -142,8 +147,9 @@ Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for 
 2. Add health/readiness endpoints to `cmd/dash`
 
 ### Priority 4 — Quality
-1. Add table-driven tests for parser with real recorded SignalR payloads
-2. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
+1. Add table-driven tests for `pkg/session` (`Apply` / `mergeTimingData` delta semantics, `*bool` flag clearing)
+2. Add table-driven tests for the livetiming parser with real recorded SignalR payloads
+3. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
 
 ---
 
