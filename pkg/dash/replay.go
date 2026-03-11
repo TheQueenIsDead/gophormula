@@ -7,7 +7,7 @@ import (
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
 	"html"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -111,13 +111,13 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 func fetchAndBuildTrackSVG(sessionPath string, b replay.PositionBounds) string {
 	raw, err := os.ReadFile(filepath.Join(sessionPath, "SessionInfo.json"))
 	if err != nil {
-		log.Printf("circuit map: reading SessionInfo.json: %v", err)
+		slog.Warn("circuit map: reading SessionInfo.json", "err", err)
 		return ""
 	}
 	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
 	var si livetiming.SessionInfo
 	if err := json.Unmarshal(raw, &si); err != nil {
-		log.Printf("circuit map: parsing SessionInfo: %v", err)
+		slog.Warn("circuit map: parsing SessionInfo", "err", err)
 		return ""
 	}
 	year := si.StartDate.Year()
@@ -126,7 +126,7 @@ func fetchAndBuildTrackSVG(sessionPath string, b replay.PositionBounds) string {
 	}
 	cm, err := livetiming.FetchCircuitMap(si.Meeting.Circuit.Key, year)
 	if err != nil {
-		log.Printf("circuit map: fetch failed: %v", err)
+		slog.Warn("circuit map: fetch failed", "err", err)
 		return ""
 	}
 	return buildTrackSVGFromMap(cm, b)

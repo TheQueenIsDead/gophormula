@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"gophormula/pkg/livetiming"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,11 +61,11 @@ func (r *Replayer) ParseGlob(glob string) error {
 
 	matches, err := filepath.Glob(glob)
 	if err != nil {
-		log.Println("error matching glob: ", err)
+		slog.Error("error matching glob", "err", err)
 		return err
 	}
 	if len(matches) == 0 {
-		log.Println("no matching files")
+		slog.Warn("no matching files", "glob", glob)
 		return err
 	}
 
@@ -77,11 +77,12 @@ func (r *Replayer) ParseGlob(glob string) error {
 			continue
 		}
 
-		log.Println("processing", filepath.Base(match))
+		slog.Debug("processing file", "file", filepath.Base(match))
 
 		file, err := os.Open(match)
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("failed to open file", "file", match, "err", err)
+			return err
 		}
 		topic, isStream := topicFromFilename(match)
 		r.files = append(r.files, fileEntry{
@@ -163,7 +164,7 @@ func (r *Replayer) Start() error {
 					}
 					parsed, err := livetiming.Parse(topic, msg)
 					if err != nil {
-						log.Printf("error parsing %s: %v", topic, err)
+						slog.Warn("error parsing stream message", "topic", topic, "err", err)
 						continue
 					}
 					r.broadcast(Message{Timestamp: ts, Value: parsed, Catchup: catchup})
@@ -173,14 +174,14 @@ func (r *Replayer) Start() error {
 			go func(f *os.File, topic string) {
 				raw, err := io.ReadAll(f)
 				if err != nil {
-					log.Printf("error reading keyframe %s: %v", topic, err)
+					slog.Error("error reading keyframe", "topic", topic, "err", err)
 					return
 				}
 				// Strip UTF-8 BOM if present
 				data := bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
 				parsed, err := livetiming.Parse(topic, data)
 				if err != nil {
-					log.Printf("error parsing keyframe %s: %v", topic, err)
+					slog.Warn("error parsing keyframe", "topic", topic, "err", err)
 					return
 				}
 				r.broadcast(Message{Timestamp: nil, Value: parsed})
@@ -268,7 +269,7 @@ func (r *Replayer) Close() error {
 		err := entry.file.Close()
 		if err != nil {
 			errs = append(errs, err)
-			log.Printf("error closing file: %x\n", entry.file.Name())
+			slog.Warn("error closing file", "file", entry.file.Name(), "err", err)
 		}
 	}
 	return errors.Join(errs...)

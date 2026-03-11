@@ -2,12 +2,21 @@ package main
 
 import (
 	"gophormula/pkg/dash"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 )
 
+func initLogging() {
+	level := slog.LevelInfo
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		_ = level.UnmarshalText([]byte(v))
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
 func main() {
+	initLogging()
 	dataDir := "data"
 	if len(os.Args) >= 2 {
 		dataDir = os.Args[1]
@@ -20,8 +29,9 @@ func main() {
 	mux.HandleFunc("/events", hub.Events)
 	mux.HandleFunc("/replay", hub.ReplayHandler())
 
-	log.Println("listening on :1234")
+	slog.Info("listening", "addr", ":1234")
 	if err := http.ListenAndServe(":1234", mux); err != nil {
-		panic(err)
+		slog.Error("server error", "err", err)
+		os.Exit(1)
 	}
 }

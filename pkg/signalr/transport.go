@@ -2,7 +2,7 @@ package signalr
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -56,21 +56,25 @@ func (t *WebsocketTransport) Connect(host, token string, hubs []Hub) error {
 	var conn *websocket.Conn
 	var resp *http.Response
 	for i := 0; i < retries; i++ {
-		log.Printf("connecting to %s...", u.String())
+		slog.Debug("connecting", "url", u.String())
 		conn, resp, err = websocket.DefaultDialer.Dial(
 			u.String(),
 			//http.Header{"User-Agent": []string{"Go-SignalR-Client"}},
 			http.Header{},
 		)
 		if err != nil {
-			log.Printf("Failed to dial: %v %v", err, resp.StatusCode)
+			statusCode := 0
+			if resp != nil {
+				statusCode = resp.StatusCode
+			}
+			slog.Warn("dial failed, retrying", "err", err, "status", statusCode)
 			time.Sleep(1 * time.Second)
 		} else {
 			break
 		}
 	}
 	if err != nil {
-		log.Printf("Failed to connect after retries: %v", err)
+		slog.Error("failed to connect after retries", "err", err)
 		return err
 	}
 
@@ -103,7 +107,7 @@ func (t *WebsocketTransport) Read() (Message, error) {
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		// It might be a simple keep-alive or other non-json message.
 		// We'll log it and return an empty message, but not an error.
-		log.Printf("could not unmarshal message: %s", string(raw))
+		slog.Warn("could not unmarshal message", "raw", string(raw))
 		return Message{Raw: raw}, nil
 	}
 

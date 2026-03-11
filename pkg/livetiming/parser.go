@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -60,7 +60,7 @@ func Decompress(data []byte) ([]byte, error) {
 	defer func(r io.ReadCloser) {
 		err := r.Close()
 		if err != nil {
-			log.Printf("failed to close reader: %v\n", err)
+			slog.Warn("failed to close flate reader", "err", err)
 		}
 	}(r)
 	var out bytes.Buffer
@@ -82,23 +82,23 @@ func ParseJSON(msg json.RawMessage) []any {
 			A []json.RawMessage `json:"A"`
 		}
 		if err := json.Unmarshal(msg, &invocations); err != nil {
-			log.Printf("error unmarshalling M invocations: %v", err)
+			slog.Error("error unmarshalling M invocations", "err", err)
 			return nil
 		}
 		var results []any
 		for _, inv := range invocations {
 			if len(inv.A) < 2 {
-				log.Printf("invalid invocation: expected at least 2 arguments, got %d", len(inv.A))
+				slog.Warn("invalid invocation", "args", len(inv.A))
 				continue
 			}
 			var topic string
 			if err := json.Unmarshal(inv.A[0], &topic); err != nil {
-				log.Printf("error unmarshalling topic from invocation: %v", err)
+				slog.Warn("error unmarshalling topic", "err", err)
 				continue
 			}
 			parsed, err := Parse(topic, inv.A[1])
 			if err != nil {
-				log.Printf("error parsing topic %s: %v", topic, err)
+				slog.Warn("error parsing topic", "topic", topic, "err", err)
 				continue
 			}
 			results = append(results, parsed)
@@ -110,14 +110,14 @@ func ParseJSON(msg json.RawMessage) []any {
 	// e.g. {"Heartbeat": {...}, "CarData.z": "base64..."}
 	var snapshot map[string]json.RawMessage
 	if err := json.Unmarshal(msg, &snapshot); err != nil {
-		log.Printf("error unmarshalling R snapshot: %v", err)
+		slog.Error("error unmarshalling R snapshot", "err", err)
 		return nil
 	}
 	var results []any
 	for topic, data := range snapshot {
 		parsed, err := Parse(topic, data)
 		if err != nil {
-			log.Printf("error parsing topic %s: %v", topic, err)
+			slog.Warn("error parsing topic", "topic", topic, "err", err)
 			continue
 		}
 		results = append(results, parsed)

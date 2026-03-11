@@ -115,18 +115,15 @@ The dashboard accumulates `TimingData`, `DriverList`, and status bar values serv
 
 ### Observability
 
-**3. Inconsistent logging**
-Mix of `log` and `log/slog` across packages. No configurable log levels. Hard to debug in production.
-
-**4. No metrics**
+**3. No metrics**
 Prometheus integration is in the roadmap but absent. No message counters, error rates, or latency tracking anywhere.
 
-**5. No context/timeout support**
+**4. No context/timeout support**
 HTTP operations in `cmd/historic` and WebSocket operations in `pkg/signalr` have no context propagation. Hangs on slow/dead connections cannot be cancelled.
 
 ### Test Coverage
 
-**6. Very limited tests**
+**5. Very limited tests**
 Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for SignalR protocol, replay timing, or message type registration. Integration tests against recorded sessions would provide high confidence.
 
 ---
@@ -138,16 +135,15 @@ Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for 
 2. Add context/timeout to all HTTP and WebSocket operations
 
 ### Priority 2 — Architecture
-3. Remove pointer-to-channel anti-pattern — use `[]chan any` directly
+1. Remove pointer-to-channel anti-pattern — use `[]chan any` directly
 
 ### Priority 3 — Observability
-4. Settle on `log/slog` throughout, with configurable level via env/flag
-5. Add Prometheus metrics: messages parsed, errors, connection uptime, replay lag
-6. Add health/readiness endpoints to `cmd/dash`
+1. Add Prometheus metrics: messages parsed, errors, connection uptime, replay lag
+2. Add health/readiness endpoints to `cmd/dash`
 
 ### Priority 4 — Quality
-7. Add table-driven tests for parser with real recorded SignalR payloads
-8. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
+1. Add table-driven tests for parser with real recorded SignalR payloads
+2. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
 
 ---
 
