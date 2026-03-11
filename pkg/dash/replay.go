@@ -31,6 +31,7 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 		bounds := r2.ScanPositionBounds()
 		ch := r2.StartAndSubscribe()
 		go func() {
+			standings := newStandingsState()
 			for m := range ch {
 				msg := m.(replay.Message)
 				if msg.Timestamp != nil {
@@ -39,6 +40,25 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
 					h.BroadcastCars(buildCarsSVG(pd, bounds))
 					continue
+				}
+				rerender := false
+				switch v := msg.Value.(type) {
+				case *livetiming.TimingData:
+					// Skip keyframe (nil timestamp) — it reflects mid-race download
+					// state, not the start of the session.
+					if msg.Timestamp != nil {
+						standings.mergeTimingData(v)
+						rerender = true
+					}
+				case *livetiming.DriverList:
+					// Keyframe is fine here — driver info doesn't change mid-race.
+					standings.mergeDriverList(v)
+					rerender = true
+				}
+				if rerender {
+					if s := standings.render(); s != "" {
+						h.send("standings-panel", "inner", s)
+					}
 				}
 				if msg.Timestamp != nil {
 					updateStatus(h, msg.Value)
@@ -107,6 +127,12 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds) string {
 // types that are displayed there.
 func updateStatus(h *Hub, msg any) {
 	switch v := msg.(type) {
+	case *livetiming.SessionStatus:
+		color := sessionStatusColor(v.Status)
+		h.BroadcastStatus("status-session",
+			fmt.Sprintf(`<span class="status-dot" style="background:%s" data-tip="%s"></span>`,
+				color, html.EscapeString(v.Status)))
+
 	case *livetiming.ExtrapolatedClock:
 		h.BroadcastStatus("status-remaining", html.EscapeString(v.Remaining))
 	case *livetiming.LapCount:
@@ -118,6 +144,18 @@ func updateStatus(h *Hub, msg any) {
 		color := trackStatusColor(v.Status)
 		h.BroadcastStatus("status-track",
 			fmt.Sprintf(`<span style="color:%s;font-weight:bold">%s</span>`, color, html.EscapeString(v.Message)))
+	}
+}
+
+// sessionStatusColor maps F1 session status strings to dot colours.
+func sessionStatusColor(status string) string {
+	switch status {
+	case "Started":
+		return "#00d2be"
+	case "Finished", "Finalised", "Ends":
+		return "#e10600"
+	default: // Inactive, unknown
+		return "#ff8c00"
 	}
 }
 
