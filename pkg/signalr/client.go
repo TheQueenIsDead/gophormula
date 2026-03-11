@@ -3,6 +3,7 @@ package signalr
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -92,30 +93,27 @@ func (c *Client) Connect(hubs []Hub, topics []string) (chan Message, error) {
 	}
 	// defer conn.Close()
 
-	// Send a HandshakeRequest
-	err = c.transport.Handshake()
+	// The F1 SignalR server requires the client to send a protocol declaration
+	// over the WebSocket before it will begin streaming subscription data.
+	// Without this write the server sends only empty group-state updates and
+	// never delivers the snapshot or incremental messages.
+	if err = c.transport.Write(append(
+		[]byte(`{"protocol":"json","version":1}`),
+		RecordSeparator,
+	)); err != nil {
+		return nil, err
+	}
 
-	// Read server response
+	// Read the server's first frame: {"C":"...","S":1,"M":[]}.
+	// S:1 means the connection was accepted.
 	msg, err := c.transport.Read()
 	if err != nil {
 		return nil, err
 	}
-	// should be {} + 0x1E if successful
-	if string(msg.Raw) != "{}\u001e" {
-		c.log.Warn("unexpected handshake response", "response", string(msg.Raw))
+	var connected ConnectedMessage
+	if err := json.Unmarshal(msg.Raw, &connected); err != nil || connected.S != 1 {
+		c.log.Warn("unexpected connect message", "response", string(msg.Raw))
 	}
-
-	// TODO: Send start request
-	// Should receive: {Response: Started}
-	/*
-		» start – informs the server that transport started successfully
-		Required parameters: transport, clientProtocol, connectionToken, connectionData (when using hubs)
-		Optional parameters: queryString
-		Sample request:
-
-		http://host/signalr/start?transport=webSockets&clientProtocol=1.5&connectionToken=LkNk&connectionData=%5B%7B%22name%22%3A%22chat%22%7D%5D
-		Sample response:
-	*/
 
 	_, err = c.Invoke(InvocationRequest{
 		Hub:    "Streaming",
@@ -159,6 +157,52 @@ func (c *Client) Invoke(req InvocationRequest) (InvocationResponse, error) {
 
 	// TODO: Fixme, actually get a response.
 	return InvocationResponse{}, nil
+}
+
+// start sends the classic ASP.NET SignalR /start HTTP request, which informs
+// the server that the WebSocket transport is ready. The server begins streaming
+// after this call returns successfully.
+func (c *Client) start(base url.URL, token string, hubs []Hub) error {
+	startURL := *base.JoinPath("start")
+	q := startURL.Query()
+	q.Set("transport", "webSockets")
+	q.Set("clientProtocol", "1.5")
+	q.Set("connectionToken", token)
+
+	hubPayload := make([]struct{ Name string }, len(hubs))
+	for i, h := range hubs {
+		hubPayload[i].Name = h.String()
+	}
+	hubsJSON, err := json.Marshal(hubPayload)
+	if err != nil {
+		return err
+	}
+	q.Set("connectionData", string(hubsJSON))
+	startURL.RawQuery = q.Encode()
+
+	c.log.Debug("start request", "url", startURL.String())
+	resp, err := http.Get(startURL.String())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	c.log.Debug("start response", "status", resp.StatusCode, "body", string(body))
+
+	var result struct {
+		Response string `json:"Response"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("start response (status %d, body %q): %w", resp.StatusCode, string(body), err)
+	}
+	if result.Response != "started" {
+		c.log.Warn("unexpected start response", "response", result.Response)
+	}
+	return nil
 }
 
 func (c *Client) negotiate(url url.URL) (*NegotiationResponse, error) {
