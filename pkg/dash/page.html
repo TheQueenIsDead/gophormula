@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Gophormula</title>
+  <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body   { display: flex; flex-direction: column; height: 100vh; font-family: monospace; background: #111; color: #eee; }
+    header { padding: .75rem 1.25rem; border-bottom: 1px solid #222; display: flex; align-items: baseline; gap: 1rem; }
+    h1     { color: #e10600; font-size: 1.2rem; letter-spacing: .05em; }
+    #active-session { color: #888; font-size: .8rem; }
+    .layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    aside  { width: 280px; border-right: 1px solid #222; overflow-y: auto; padding: .5rem; flex-shrink: 0; }
+    aside h2 { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: #555; padding: .5rem .25rem .25rem; }
+    .session-btn { display: block; width: 100%; text-align: left; background: none; border: none; color: #ccc;
+                   padding: .4rem .5rem; cursor: pointer; font: inherit; font-size: .8rem; border-radius: 3px; }
+    .session-btn:hover { background: #1e1e1e; color: #fff; }
+    main   { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    #plot-panel { height: 280px; flex-shrink: 0; border-bottom: 1px solid #222; background: #0a0a0a; overflow: hidden; }
+    #track-plot { display: block; width: 100%; height: 280px; }
+    #log-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    #log-panel h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: #555; padding: .6rem 1rem; border-bottom: 1px solid #1a1a1a; flex-shrink: 0; }
+    #log   { flex: 1; min-height: 0; overflow-y: auto; padding: .25rem; }
+    .entry { padding: 3px 8px; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 2px solid #222; margin-bottom: 2px; }
+    .entry .ts   { color: #555; margin-right: .6rem; }
+    .entry .body { color: #ddd; }
+  </style>
+</head>
+<body data-init="@get('/events')">
+  <header>
+    <h1>Gophormula</h1>
+    <span id="active-session">no session selected</span>
+  </header>
+  <div class="layout">
+    <aside>
+      <h2>Sessions</h2>
+      {{range .Sessions}}
+      <button class="session-btn" data-on:click="@post('/replay?path={{.Path | urlEncode}}')" >{{.Name}}</button>
+      {{else}}
+      <p style="color:#555;font-size:.8rem;padding:.5rem">No sessions found in {{$.DataDir}}</p>
+      {{end}}
+    </aside>
+    <main>
+      <div id="plot-panel">
+        <svg id="track-plot" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
+          <rect width="800" height="600" fill="#0a0a0a"/>
+          <g id="cars"></g>
+        </svg>
+      </div>
+      <div id="log-panel">
+        <h2>Log</h2>
+        <div id="log"></div>
+      </div>
+    </main>
+  </div>
+  <script>
+    const log = document.getElementById('log');
+    new MutationObserver(() => { log.scrollTop = log.scrollHeight; })
+      .observe(log, { childList: true });
+  </script>
+</body>
+</html>
