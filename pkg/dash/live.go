@@ -72,6 +72,9 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 							}
 						}
 						updateStatus(h, parsed)
+						if body := formatMessage(parsed); body != "" {
+							h.Broadcast(now.Format("15:04:05"), body)
+						}
 						continue
 					}
 
