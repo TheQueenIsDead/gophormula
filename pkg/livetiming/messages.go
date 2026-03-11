@@ -427,10 +427,10 @@ type TimingDataLine struct {
 	Position                string            `json:"Position"`
 	ShowPosition            bool              `json:"ShowPosition"`
 	RacingNumber            string            `json:"RacingNumber"`
-	Retired                 bool              `json:"Retired"`
-	InPit                   bool              `json:"InPit"`
-	PitOut                  bool              `json:"PitOut"`
-	Stopped                 bool              `json:"Stopped"`
+	Retired                 *bool             `json:"Retired"`
+	InPit                   *bool             `json:"InPit"`
+	PitOut                  *bool             `json:"PitOut"`
+	Stopped                 *bool             `json:"Stopped"`
 	Status                  int               `json:"Status"`
 	NumberOfLaps            int               `json:"NumberOfLaps"`
 	NumberOfPitStops        int               `json:"NumberOfPitStops"`
