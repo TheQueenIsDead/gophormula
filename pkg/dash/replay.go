@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // svgW and svgH are the fixed dimensions of the track SVG canvas.
@@ -28,32 +29,52 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if seekStr := r.URL.Query().Get("seek"); seekStr != "" {
+			if d, err := time.ParseDuration(seekStr); err == nil {
+				r2.SeekTo(d)
+			}
+		}
 		bounds := r2.ScanPositionBounds()
 		ch := r2.StartAndSubscribe()
 		go func() {
 			standings := newStandingsState()
+			status := newStatusState()
+			catchingUp := true
 			for m := range ch {
 				msg := m.(replay.Message)
-				if msg.Timestamp != nil {
-					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
-				}
-				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
-					h.BroadcastCars(buildCarsSVG(pd, bounds))
-					continue
-				}
+				// Always accumulate state even during catch-up.
 				rerender := false
 				switch v := msg.Value.(type) {
 				case *livetiming.TimingData:
-					// Skip keyframe (nil timestamp) — it reflects mid-race download
-					// state, not the start of the session.
 					if msg.Timestamp != nil {
 						standings.mergeTimingData(v)
 						rerender = true
 					}
 				case *livetiming.DriverList:
-					// Keyframe is fine here — driver info doesn't change mid-race.
 					standings.mergeDriverList(v)
 					rerender = true
+				}
+				if msg.Timestamp != nil {
+					status.merge(msg.Value)
+				}
+				// During catch-up, skip all UI updates.
+				if msg.Catchup {
+					continue
+				}
+				// First real-time message: flush accumulated status and standings.
+				if catchingUp {
+					catchingUp = false
+					status.flush(h)
+					if s := standings.render(); s != "" {
+						h.send("standings-panel", "inner", s)
+					}
+				}
+				if msg.Timestamp != nil {
+					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
+				}
+				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
+					h.BroadcastCars(buildCarsSVG(pd, bounds, standings.drivers))
+					continue
 				}
 				if rerender {
 					if s := standings.render(); s != "" {
@@ -81,8 +102,8 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 
 // buildCarsSVG converts a PositionData snapshot into a full SVG element with
 // car positions normalised to the fixed svgW×svgH canvas using the
-// pre-scanned circuit bounds.
-func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds) string {
+// pre-scanned circuit bounds. drivers provides team colours and TLAs.
+func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers map[string]livetiming.Driver) string {
 	if len(pd.Position) == 0 || !b.Valid {
 		return ""
 	}
@@ -105,14 +126,24 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds) string {
 		// normalise: SVG Y is flipped relative to F1 Y
 		sx := float64(pad) + float64(e.X-b.MinX)/float64(rangeX)*float64(usableW)
 		sy := float64(pad) + (1.0-float64(e.Y-b.MinY)/float64(rangeY))*float64(usableH)
-		color := "#ffffff"
+		dotColor := "#ffffff"
 		if e.Status == "OffTrack" {
-			color = "#888888"
+			dotColor = "#555555"
+		} else if d, ok := drivers[num]; ok && d.TeamColour != "" {
+			dotColor = "#" + d.TeamColour
+		}
+		label := num
+		if d, ok := drivers[num]; ok && d.Tla != "" {
+			label = d.Tla
+		}
+		textColor := "#111111"
+		if e.Status == "OffTrack" {
+			textColor = "#999999"
 		}
 		fmt.Fprintf(&cars,
-			`<circle cx="%.1f" cy="%.1f" r="6" fill="%s" stroke="#111" stroke-width="1"></circle>`+
-				`<text x="%.1f" y="%.1f" text-anchor="middle" font-size="8" fill="#111" font-family="monospace">%s</text>`,
-			sx, sy, color, sx, sy+3.5, num)
+			`<circle cx="%.1f" cy="%.1f" r="9" fill="%s" stroke="#111" stroke-width="1"></circle>`+
+				`<text x="%.1f" y="%.1f" text-anchor="middle" font-size="7" fill="%s" font-family="monospace" font-weight="bold">%s</text>`,
+			sx, sy, dotColor, sx, sy+2.5, textColor, html.EscapeString(label))
 	}
 	return fmt.Sprintf(
 		`<svg id="track-plot" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet">`+
@@ -258,13 +289,13 @@ func formatMessage(msg any) string {
 			if len(sectorVals) > 0 {
 				fields = append(fields, "S:"+strings.Join(sectorVals, "/"))
 			}
-			if line.Retired {
+			if pbool(line.Retired) {
 				fields = append(fields, "[OUT]")
-			} else if line.InPit {
+			} else if pbool(line.InPit) {
 				fields = append(fields, "[PIT]")
-			} else if line.PitOut {
+			} else if pbool(line.PitOut) {
 				fields = append(fields, "[PIT OUT]")
-			} else if line.Stopped {
+			} else if pbool(line.Stopped) {
 				fields = append(fields, "[STOPPED]")
 			}
 			if len(fields) > 1 { // skip empty init pings that carry only the racing number
