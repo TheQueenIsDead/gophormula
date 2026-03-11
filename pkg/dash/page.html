@@ -7,11 +7,10 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body   { display: flex; flex-direction: column; height: 100vh; font-family: monospace; background: #111; color: #eee; }
-    header { padding: .75rem 1.25rem; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 1rem; position: relative; }
+    header { padding: .75rem 1.25rem; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 1rem; }
     h1     { color: #e10600; font-size: 1.2rem; letter-spacing: .05em; flex-shrink: 0; }
     #active-session { color: #888; font-size: .8rem; flex-shrink: 0; }
-    #status-clock { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: baseline; gap: .6rem; }
-    #status-time { font-size: 1.3rem; font-weight: bold; color: #fff; letter-spacing: .05em; }
+    #status-time { font-size: 1.3rem; font-weight: bold; color: #fff; letter-spacing: .05em; flex-shrink: 0; }
     #status-remaining { font-size: .8rem; color: #666; }
     .status-bar { margin-left: auto; display: flex; align-items: center; gap: 1.25rem; font-size: .75rem; color: #888; }
     .status-item { white-space: nowrap; }
@@ -66,12 +65,10 @@
   <header>
     <h1>Gophormula</h1>
     <span id="active-session">no session selected</span>
-    <div id="status-clock">
-      <span id="status-time">——:——:——</span>
-      <span id="status-remaining"></span>
-    </div>
+    <span id="status-time">——:——:——</span>
     <nav class="status-bar">
       <span id="status-session" class="status-item"></span>
+      <span class="status-item"><span class="status-label">Remaining</span><span id="status-remaining"></span></span>
       <span class="status-item"><span class="status-label">Lap</span><span id="status-lap">— / —</span></span>
       <span class="status-item"><span class="status-label">Track</span><span id="status-track">—</span></span>
       <span class="status-item"><span class="status-label">Weather</span><span id="status-weather">—</span></span>
