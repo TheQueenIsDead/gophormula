@@ -26,19 +26,25 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 		}
 		slog.Info("live: connected to F1 SignalR")
 
+		// Respond with 204 so Datastar does not treat this as an SSE stream.
+		// Sending SSE on the POST response causes Datastar to briefly drop the
+		// persistent /events connection, resulting in missed snapshot updates.
+		// The goroutine pushes the active-session label through /events instead.
+		w.WriteHeader(http.StatusNoContent)
+
 		go func() {
+			h.send("active-session", "inner", "Live")
+
 			sess := session.New()
 			var bounds replay.PositionBounds
 			var trackSVG string
 
 			for msg := range ch {
 				data := msg.Data()
-				slog.Debug("live: raw message", "raw", string(msg.Raw), "data_len", len(data))
 				if data == nil {
 					continue
 				}
 				results := livetiming.ParseJSON(data)
-				slog.Debug("live: parsed", "count", len(results))
 				for _, parsed := range results {
 					now := time.Now()
 
@@ -78,9 +84,7 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 					}
 
 					if rerender {
-						s := renderStandings(sess)
-						slog.Info("live: standings update", "standings_entries", len(sess.Standings), "html_len", len(s), "clients", len(h.clients))
-						if s != "" {
+						if s := renderStandings(sess); s != "" {
 							h.send("standings-panel", "inner", s)
 						}
 					}
@@ -94,8 +98,6 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 			}
 			slog.Info("live: SignalR connection closed")
 		}()
-
-		SessionStarted(w, r, "Live")
 	}
 }
 
