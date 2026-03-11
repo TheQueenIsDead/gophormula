@@ -27,7 +27,7 @@ var pageTmpl = template.Must(
 		Parse(pageTmplSrc),
 )
 
-// Hub manages SSE subscribers and broadcasts log lines to all connected clients.
+// Hub manages SSE subscribers and broadcasts updates to all connected clients.
 type Hub struct {
 	mu      sync.Mutex
 	clients map[chan entry]struct{}
@@ -56,37 +56,45 @@ func (h *Hub) unsubscribe(ch chan entry) {
 	close(ch)
 }
 
+// entry is a generic DOM patch: replace the inner HTML of selector with fragment,
+// or append to it when mode is "append".
 type entry struct {
-	// log entry fields
-	ts   string
-	body string
-	// cars patch (non-empty means this is a car-position update, not a log line)
-	carsFragment string
+	selector string
+	mode     string // "append" or "inner"
+	fragment string
 }
 
-// Broadcast sends a log entry to all connected SSE clients, dropping any that
-// are too slow to consume (non-blocking send).
+func (h *Hub) send(selector, mode, fragment string) {
+	if fragment == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients {
+		select {
+		case ch <- entry{selector: selector, mode: mode, fragment: fragment}:
+		default:
+		}
+	}
+}
+
+// Broadcast appends a timestamped log entry to #log.
 func (h *Hub) Broadcast(ts, body string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for ch := range h.clients {
-		select {
-		case ch <- entry{ts: ts, body: body}:
-		default:
-		}
-	}
+	fragment := fmt.Sprintf(
+		`<div class="entry"><span class="ts">%s</span><span class="body">%s</span></div>`,
+		html.EscapeString(ts), html.EscapeString(body),
+	)
+	h.send("log", "append", fragment)
 }
 
-// BroadcastCars sends an SVG fragment that replaces the content of #cars.
+// BroadcastCars replaces #plot-panel with a fresh SVG (avoids SVG namespace issues with innerHTML).
 func (h *Hub) BroadcastCars(fragment string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for ch := range h.clients {
-		select {
-		case ch <- entry{carsFragment: fragment}:
-		default:
-		}
-	}
+	h.send("plot-panel", "inner", fragment)
+}
+
+// BroadcastStatus replaces the inner HTML of the named status element.
+func (h *Hub) BroadcastStatus(id, fragment string) {
+	h.send(id, "inner", fragment)
 }
 
 // Session represents a discoverable race session on disk.
@@ -122,8 +130,7 @@ func (h *Hub) Index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Events is the persistent SSE endpoint. Datastar connects here on page load
-// and receives datastar-patch-elements events prepending new log entries.
+// Events is the persistent SSE endpoint. Datastar connects here on page load.
 func (h *Hub) Events(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	ch := h.subscribe()
@@ -135,18 +142,14 @@ func (h *Hub) Events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if e.carsFragment != "" {
-				if err := sse.PatchElements(e.carsFragment, datastar.WithSelectorID("plot-panel"), datastar.WithModeInner()); err != nil {
-					return
-				}
+			var modeOpt datastar.PatchElementOption
+			if e.mode == "append" {
+				modeOpt = datastar.WithModeAppend()
 			} else {
-				fragment := fmt.Sprintf(
-					`<div class="entry"><span class="ts">%s</span><span class="body">%s</span></div>`,
-					html.EscapeString(e.ts), html.EscapeString(e.body),
-				)
-				if err := sse.PatchElements(fragment, datastar.WithSelectorID("log"), datastar.WithModeAppend()); err != nil {
-					return
-				}
+				modeOpt = datastar.WithModeInner()
+			}
+			if err := sse.PatchElements(e.fragment, datastar.WithSelectorID(e.selector), modeOpt); err != nil {
+				return
 			}
 		case <-r.Context().Done():
 			return
@@ -155,7 +158,7 @@ func (h *Hub) Events(w http.ResponseWriter, r *http.Request) {
 }
 
 // SessionStarted sends a Datastar patch event back to the browser that initiated
-// a replay, updating the active-session indicator. Call this from the /replay handler.
+// a replay, updating the active-session indicator.
 func SessionStarted(w http.ResponseWriter, r *http.Request, name string) {
 	sse := datastar.NewSSE(w, r)
 	fragment := fmt.Sprintf(`<span id="active-session">%s</span>`, html.EscapeString(name))

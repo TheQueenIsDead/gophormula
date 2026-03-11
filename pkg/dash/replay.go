@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
+	"html"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -32,10 +33,14 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 		go func() {
 			for m := range ch {
 				msg := m.(replay.Message)
+				if msg.Timestamp != nil {
+					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
+				}
 				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
 					h.BroadcastCars(buildCarsSVG(pd, bounds))
 					continue
 				}
+				updateStatus(h, msg.Value)
 				body := formatMessage(msg.Value)
 				if body == "" {
 					continue
@@ -94,6 +99,42 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds) string {
 			`</svg>`,
 		svgW, svgH, svgW, svgH, cars.String(),
 	)
+}
+
+// updateStatus pushes live values to the status bar elements for the message
+// types that are displayed there.
+func updateStatus(h *Hub, msg any) {
+	switch v := msg.(type) {
+	case *livetiming.ExtrapolatedClock:
+		h.BroadcastStatus("status-remaining", html.EscapeString(v.Remaining))
+	case *livetiming.LapCount:
+		h.BroadcastStatus("status-lap", fmt.Sprintf("Lap %d / %d", v.CurrentLap, v.TotalLaps))
+	case *livetiming.WeatherData:
+		h.BroadcastStatus("status-weather",
+			fmt.Sprintf("Air %s°C · Track %s°C · Wind %skm/h · Rain %s", v.AirTemp, v.TrackTemp, v.WindSpeed, v.Rainfall))
+	case *livetiming.TrackStatus:
+		color := trackStatusColor(v.Status)
+		h.BroadcastStatus("status-track",
+			fmt.Sprintf(`<span style="color:%s;font-weight:bold">%s</span>`, color, html.EscapeString(v.Message)))
+	}
+}
+
+// trackStatusColor maps F1 track status codes to display colours.
+// 1 = AllClear, 2 = Yellow, 3 = SCDeployed, 4 = SCStopped, 5 = RedFlag,
+// 6 = VSCDeployed, 7 = VSCEnding.
+func trackStatusColor(status string) string {
+	switch status {
+	case "1":
+		return "#00d2be" // green
+	case "2":
+		return "#ffd700" // yellow flag
+	case "3", "4", "6", "7":
+		return "#ffd700" // safety car / VSC
+	case "5":
+		return "#e10600" // red flag
+	default:
+		return "#888888"
+	}
 }
 
 func formatMessage(msg any) string {
