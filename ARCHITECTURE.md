@@ -102,40 +102,28 @@ Bufio scanners for line-by-line file reading, streaming JSON parsing from HTTP �
 
 ### Critical (Build/Runtime Correctness)
 
-**1. Incomplete `ParseJSON()` implementation** (`pkg/livetiming/parser.go`)
-The function has TODO comments and doesn't handle incremental updates (`"M"` array mode from SignalR). In a SignalR stream, most messages after initial state are incremental — this means the live client loses most of its data silently. This is the single most impactful gap.
-
-**2. Stubbed reconnection logic** (`pkg/signalr/client.go`)
+**1. Stubbed reconnection logic** (`pkg/signalr/client.go`)
 `reconnect()`, `abort()`, and `ping()` all `panic("not implemented")`. A live F1 session runs for hours; without reconnection the client is not production-usable.
-
-**3. Timing simulation in replay** (`pkg/replay/replay.go`)
-A hardcoded 1-second sleep between all messages ignores actual timestamp deltas and doesn't coordinate across multiple concurrently-replayed files. Replay isn't useful for timing-sensitive analysis in its current state.
 
 ### Design Gaps
 
-**4. Pointer-to-channel pattern** (`pkg/replay/replay.go`)
+**2. Pointer-to-channel pattern** (`pkg/replay/replay.go`)
 `subscribers []*chan any` takes the address of a channel, which is unusual and unnecessary — channels are already reference types. This adds confusion without benefit.
-
-**5. Missing message types in registry**
-15 topics are subscribed but fewer types are registered in the parser's `init()`. Unregistered topics silently produce no output.
-
-**6. No backpressure in pub-sub broadcast**
-If a subscriber channel fills, the broadcast loop will block or drop messages with no signal to the caller. For high-frequency feeds (CarData.z at ~7.6MB/race), this is a real concern.
 
 ### Observability
 
-**7. Inconsistent logging**
+**3. Inconsistent logging**
 Mix of `log`, `log/slog`, and silent errors across packages. No configurable log levels. Hard to debug in production.
 
-**8. No metrics**
+**4. No metrics**
 Prometheus integration is in the roadmap but absent. No message counters, error rates, or latency tracking anywhere.
 
-**9. No context/timeout support**
+**5. No context/timeout support**
 HTTP operations in `cmd/historic` and WebSocket operations in `pkg/signalr` have no context propagation. Hangs on slow/dead connections cannot be cancelled.
 
 ### Test Coverage
 
-**10. Very limited tests**
+**6. Very limited tests**
 Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for SignalR protocol, replay timing, or message type registration. Integration tests against recorded sessions would provide high confidence.
 
 ---
@@ -143,25 +131,20 @@ Only `pkg/livetiming/parser_test.go` exists (decompression tests). No tests for 
 ## Recommendations
 
 ### Priority 1 — Correctness
-1. Complete `ParseJSON()` to handle SignalR incremental message arrays (`"M"` field)
-2. Implement `reconnect()` with exponential backoff (not panic)
-3. Add context/timeout to all HTTP and WebSocket operations
+1. Implement `reconnect()` with exponential backoff (not panic)
+2. Add context/timeout to all HTTP and WebSocket operations
 
 ### Priority 2 — Architecture
-4. Replace hardcoded replay sleep with timestamp-delta-based timing
-5. Add backpressure to pub-sub: non-blocking sends with drop/log semantics, or bounded channel sizes
-6. Remove pointer-to-channel anti-pattern — use `[]chan any` directly
-7. Centralize all topic-to-type registrations to ensure parity with subscriptions
+3. Remove pointer-to-channel anti-pattern — use `[]chan any` directly
 
 ### Priority 3 — Observability
-8. Settle on `log/slog` throughout, with configurable level via env/flag
-9. Add Prometheus metrics: messages parsed, errors, connection uptime, replay lag
-10. Add health/readiness endpoints to `cmd/dash`
+4. Settle on `log/slog` throughout, with configurable level via env/flag
+5. Add Prometheus metrics: messages parsed, errors, connection uptime, replay lag
+6. Add health/readiness endpoints to `cmd/dash`
 
 ### Priority 4 — Quality
-11. Add table-driven tests for parser with real recorded SignalR payloads
-12. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
-13. Expand message struct definitions (many are placeholders)
+7. Add table-driven tests for parser with real recorded SignalR payloads
+8. Add graceful shutdown via `os.Signal` + context cancellation across all cmds
 
 ---
 
