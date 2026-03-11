@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
+	"gophormula/pkg/session"
 	"html"
 	"log/slog"
 	"net/http"
@@ -42,25 +43,25 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 		trackSVG := fetchAndBuildTrackSVG(path, bounds)
 		ch := r2.StartAndSubscribe()
 		go func() {
-			standings := newStandingsState()
-			status := newStatusState()
+			sess := session.New()
 			catchingUp := true
 			for m := range ch {
 				msg := m.(replay.Message)
 				// Always accumulate state even during catch-up.
-				rerender := false
-				switch v := msg.Value.(type) {
+				// TimingData keyframes (nil Timestamp) are skipped to avoid contaminating
+				// standings with the full-state dump; all other types are always applied.
+				var rerender bool
+				switch msg.Value.(type) {
 				case *livetiming.TimingData:
 					if msg.Timestamp != nil {
-						standings.mergeTimingData(v)
+						sess.Apply(msg.Value)
 						rerender = true
 					}
 				case *livetiming.DriverList:
-					standings.mergeDriverList(v)
+					sess.Apply(msg.Value)
 					rerender = true
-				}
-				if msg.Timestamp != nil {
-					status.merge(msg.Value)
+				default:
+					sess.Apply(msg.Value)
 				}
 				// During catch-up, skip all UI updates.
 				if msg.Catchup {
@@ -69,8 +70,8 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 				// First real-time message: flush accumulated status and standings.
 				if catchingUp {
 					catchingUp = false
-					status.flush(h)
-					if s := standings.render(); s != "" {
+					flushStatus(sess, h)
+					if s := renderStandings(sess); s != "" {
 						h.send("standings-panel", "inner", s)
 					}
 				}
@@ -78,11 +79,11 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
 				}
 				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
-					h.BroadcastCars(buildCarsSVG(pd, bounds, standings.drivers, trackSVG))
+					h.BroadcastCars(buildCarsSVG(pd, bounds, sess.Drivers, trackSVG))
 					continue
 				}
 				if rerender {
-					if s := standings.render(); s != "" {
+					if s := renderStandings(sess); s != "" {
 						h.send("standings-panel", "inner", s)
 					}
 				}

@@ -3,85 +3,19 @@ package dash
 import (
 	"fmt"
 	"gophormula/pkg/livetiming"
+	"gophormula/pkg/session"
 	"html"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// standingsState accumulates incremental TimingData and DriverList deltas so
-// we can always render the full current standings.
-type standingsState struct {
-	lines   map[string]livetiming.TimingDataLine
-	drivers map[string]livetiming.Driver
-}
-
-func newStandingsState() *standingsState {
-	return &standingsState{
-		lines:   make(map[string]livetiming.TimingDataLine),
-		drivers: make(map[string]livetiming.Driver),
-	}
-}
-
 func pbool(p *bool) bool { return p != nil && *p }
 
-// mergeTimingData applies a delta TimingData update to the accumulated state.
-// Pointer bool fields (InPit, PitOut, Stopped, Retired) use nil to mean
-// "not present in this delta", so both true and false values are respected.
-func (s *standingsState) mergeTimingData(td *livetiming.TimingData) {
-	for num, delta := range td.Lines {
-		existing := s.lines[num]
-		if delta.Position != "" {
-			existing.Position = delta.Position
-		}
-		if delta.GapToLeader != "" {
-			existing.GapToLeader = delta.GapToLeader
-		}
-		if delta.IntervalToPositionAhead.Value != "" {
-			existing.IntervalToPositionAhead = delta.IntervalToPositionAhead
-		}
-		if delta.NumberOfLaps > 0 {
-			existing.NumberOfLaps = delta.NumberOfLaps
-		}
-		if delta.NumberOfPitStops > 0 {
-			existing.NumberOfPitStops = delta.NumberOfPitStops
-		}
-		if delta.Retired != nil {
-			existing.Retired = delta.Retired
-		}
-		if delta.PitOut != nil {
-			existing.PitOut = delta.PitOut
-			if pbool(delta.PitOut) {
-				f := false
-				existing.InPit = &f
-			}
-		}
-		if delta.InPit != nil {
-			existing.InPit = delta.InPit
-			if pbool(delta.InPit) {
-				f := false
-				existing.PitOut = &f
-			}
-		}
-		if delta.Stopped != nil {
-			existing.Stopped = delta.Stopped
-		}
-		s.lines[num] = existing
-	}
-}
-
-// mergeDriverList updates the driver info map from a DriverList message.
-func (s *standingsState) mergeDriverList(dl *livetiming.DriverList) {
-	for num, d := range *dl {
-		if d.Tla != "" {
-			s.drivers[num] = d
-		}
-	}
-}
-
-// render builds the inner HTML for the standings panel, sorted by race position.
-func (s *standingsState) render() string {
-	if len(s.lines) == 0 {
+// renderStandings builds the inner HTML for the standings panel from the
+// current session state, sorted by race position.
+func renderStandings(sess *session.Session) string {
+	if len(sess.Standings) == 0 {
 		return ""
 	}
 
@@ -90,8 +24,8 @@ func (s *standingsState) render() string {
 		line livetiming.TimingDataLine
 		pos  int
 	}
-	rows := make([]row, 0, len(s.lines))
-	for num, line := range s.lines {
+	rows := make([]row, 0, len(sess.Standings))
+	for num, line := range sess.Standings {
 		pos, _ := strconv.Atoi(line.Position)
 		rows = append(rows, row{num: num, line: line, pos: pos})
 	}
@@ -109,7 +43,7 @@ func (s *standingsState) render() string {
 
 	var sb strings.Builder
 	for _, r := range rows {
-		driver := s.drivers[r.num]
+		driver := sess.Drivers[r.num]
 		tla := driver.Tla
 		if tla == "" {
 			tla = "#" + r.num
