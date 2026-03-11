@@ -22,18 +22,28 @@ type fileEntry struct {
 
 // Message pairs a parsed livetiming value with the session timestamp from the
 // stream file. Timestamp is nil for keyframe messages (no line timestamp).
+// Catchup is true when the message is being fast-forwarded past the seek point
+// and should be used to accumulate state but not displayed in the UI.
 type Message struct {
 	Timestamp *time.Time
 	Value     any
+	Catchup   bool
 }
 
 type Replayer struct {
 	files       []fileEntry
 	subscribers []*chan any
+	seekOffset  time.Duration
 }
 
 func New() *Replayer {
 	return &Replayer{}
+}
+
+// SeekTo sets the session-time offset to seek to before starting real-time
+// playback. Messages before the offset are broadcast instantly with Catchup=true.
+func (r *Replayer) SeekTo(d time.Duration) {
+	r.seekOffset = d
 }
 
 // topicFromFilename strips the .jsonStream or .json extension from a filename
@@ -139,12 +149,16 @@ func (r *Replayer) Start() error {
 					if err != nil || msg == nil {
 						continue
 					}
-					// Sleep until the wall-clock time that corresponds to this
-					// message's session timestamp, keeping all files in sync.
+					catchup := false
 					if ts != nil && sessionOrigin != nil {
 						offset := ts.Sub(*sessionOrigin)
-						if d := time.Until(wallStart.Add(offset)); d > 0 {
-							time.Sleep(d)
+						if offset < r.seekOffset {
+							catchup = true
+						} else {
+							relOffset := offset - r.seekOffset
+							if d := time.Until(wallStart.Add(relOffset)); d > 0 {
+								time.Sleep(d)
+							}
 						}
 					}
 					parsed, err := livetiming.Parse(topic, msg)
@@ -152,7 +166,7 @@ func (r *Replayer) Start() error {
 						log.Printf("error parsing %s: %v", topic, err)
 						continue
 					}
-					r.broadcast(Message{Timestamp: ts, Value: parsed})
+					r.broadcast(Message{Timestamp: ts, Value: parsed, Catchup: catchup})
 				}
 			}(&r.files[i].file, r.files[i].topic)
 		} else {

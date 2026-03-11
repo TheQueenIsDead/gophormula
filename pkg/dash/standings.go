@@ -23,9 +23,11 @@ func newStandingsState() *standingsState {
 	}
 }
 
+func pbool(p *bool) bool { return p != nil && *p }
+
 // mergeTimingData applies a delta TimingData update to the accumulated state.
-// Only non-zero fields in the delta overwrite existing values; the exception is
-// PitOut which clears InPit (car has left the pits).
+// Pointer bool fields (InPit, PitOut, Stopped, Retired) use nil to mean
+// "not present in this delta", so both true and false values are respected.
 func (s *standingsState) mergeTimingData(td *livetiming.TimingData) {
 	for num, delta := range td.Lines {
 		existing := s.lines[num]
@@ -44,18 +46,25 @@ func (s *standingsState) mergeTimingData(td *livetiming.TimingData) {
 		if delta.NumberOfPitStops > 0 {
 			existing.NumberOfPitStops = delta.NumberOfPitStops
 		}
-		if delta.Retired {
-			existing.Retired = true
+		if delta.Retired != nil {
+			existing.Retired = delta.Retired
 		}
-		if delta.PitOut {
-			existing.InPit = false
-			existing.PitOut = true
-		} else if delta.InPit {
-			existing.InPit = true
-			existing.PitOut = false
+		if delta.PitOut != nil {
+			existing.PitOut = delta.PitOut
+			if pbool(delta.PitOut) {
+				f := false
+				existing.InPit = &f
+			}
 		}
-		if delta.Stopped {
-			existing.Stopped = true
+		if delta.InPit != nil {
+			existing.InPit = delta.InPit
+			if pbool(delta.InPit) {
+				f := false
+				existing.PitOut = &f
+			}
+		}
+		if delta.Stopped != nil {
+			existing.Stopped = delta.Stopped
 		}
 		s.lines[num] = existing
 	}
@@ -88,7 +97,7 @@ func (s *standingsState) render() string {
 	}
 	// Retired drivers go last; within retired group, keep position order.
 	sort.Slice(rows, func(i, j int) bool {
-		ri, rj := rows[i].line.Retired, rows[j].line.Retired
+		ri, rj := pbool(rows[i].line.Retired), pbool(rows[j].line.Retired)
 		if ri != rj {
 			return !ri
 		}
@@ -115,21 +124,22 @@ func (s *standingsState) render() string {
 			gap = "Leader"
 		}
 
+		retired := pbool(r.line.Retired)
 		rowStyle := fmt.Sprintf("border-left:3px solid %s", colour)
 		rowClass := "sr"
-		if r.line.Retired {
+		if retired {
 			rowClass += " sr-out"
 		}
 
 		badge := ""
 		switch {
-		case r.line.Retired:
+		case retired:
 			badge = `<span class="sr-badge sr-badge-out">OUT</span>`
-		case r.line.InPit:
+		case pbool(r.line.InPit):
 			badge = `<span class="sr-badge sr-badge-pit">PIT</span>`
-		case r.line.PitOut:
+		case pbool(r.line.PitOut):
 			badge = `<span class="sr-badge sr-badge-pto">PTO</span>`
-		case r.line.Stopped:
+		case pbool(r.line.Stopped):
 			badge = `<span class="sr-badge sr-badge-stp">STP</span>`
 		}
 
