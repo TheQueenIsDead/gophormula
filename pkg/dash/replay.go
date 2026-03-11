@@ -40,7 +40,9 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 					h.BroadcastCars(buildCarsSVG(pd, bounds))
 					continue
 				}
-				updateStatus(h, msg.Value)
+				if msg.Timestamp != nil {
+					updateStatus(h, msg.Value)
+				}
 				body := formatMessage(msg.Value)
 				if body == "" {
 					continue
