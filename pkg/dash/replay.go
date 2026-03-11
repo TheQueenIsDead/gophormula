@@ -1,11 +1,15 @@
 package dash
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
 	"html"
+	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -35,6 +39,7 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 			}
 		}
 		bounds := r2.ScanPositionBounds()
+		trackSVG := fetchAndBuildTrackSVG(path, bounds)
 		ch := r2.StartAndSubscribe()
 		go func() {
 			standings := newStandingsState()
@@ -73,7 +78,7 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
 				}
 				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
-					h.BroadcastCars(buildCarsSVG(pd, bounds, standings.drivers))
+					h.BroadcastCars(buildCarsSVG(pd, bounds, standings.drivers, trackSVG))
 					continue
 				}
 				if rerender {
@@ -100,10 +105,71 @@ func (h *Hub) ReplayHandler() http.HandlerFunc {
 	}
 }
 
+// fetchAndBuildTrackSVG reads SessionInfo.json from the session directory,
+// fetches the circuit map from the Multiviewer API, and returns an SVG polyline
+// fragment for the track outline. Falls back to an empty string on any error.
+func fetchAndBuildTrackSVG(sessionPath string, b replay.PositionBounds) string {
+	raw, err := os.ReadFile(filepath.Join(sessionPath, "SessionInfo.json"))
+	if err != nil {
+		log.Printf("circuit map: reading SessionInfo.json: %v", err)
+		return ""
+	}
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
+	var si livetiming.SessionInfo
+	if err := json.Unmarshal(raw, &si); err != nil {
+		log.Printf("circuit map: parsing SessionInfo: %v", err)
+		return ""
+	}
+	year := si.StartDate.Year()
+	if year == 0 {
+		year = time.Now().Year()
+	}
+	cm, err := livetiming.FetchCircuitMap(si.Meeting.Circuit.Key, year)
+	if err != nil {
+		log.Printf("circuit map: fetch failed: %v", err)
+		return ""
+	}
+	return buildTrackSVGFromMap(cm, b)
+}
+
+// buildTrackSVGFromMap normalises the Multiviewer circuit map coordinates onto
+// the fixed SVG canvas and returns a single polyline element.
+func buildTrackSVGFromMap(cm *livetiming.CircuitMap, b replay.PositionBounds) string {
+	if cm == nil || len(cm.X) == 0 || !b.Valid {
+		return ""
+	}
+	rangeX := float64(b.MaxX - b.MinX)
+	rangeY := float64(b.MaxY - b.MinY)
+	if rangeX == 0 {
+		rangeX = 1
+	}
+	if rangeY == 0 {
+		rangeY = 1
+	}
+	const pad = 40
+	usableW := float64(svgW - 2*pad)
+	usableH := float64(svgH - 2*pad)
+	var pts strings.Builder
+	for i := range cm.X {
+		tx := float64(pad) + (cm.X[i]-float64(b.MinX))/rangeX*usableW
+		ty := float64(pad) + (1.0-(cm.Y[i]-float64(b.MinY))/rangeY)*usableH
+		if i > 0 {
+			pts.WriteByte(' ')
+		}
+		fmt.Fprintf(&pts, "%.1f,%.1f", tx, ty)
+	}
+	return fmt.Sprintf(
+		`<polyline points="%s" fill="none" stroke="#333" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"></polyline>`+
+			`<polyline points="%s" fill="none" stroke="#1a1a1a" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"></polyline>`,
+		pts.String(), pts.String(),
+	)
+}
+
 // buildCarsSVG converts a PositionData snapshot into a full SVG element with
 // car positions normalised to the fixed svgW×svgH canvas using the
 // pre-scanned circuit bounds. drivers provides team colours and TLAs.
-func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers map[string]livetiming.Driver) string {
+// trackSVG is the pre-built circuit outline fragment from buildTrackSVG.
+func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers map[string]livetiming.Driver, trackSVG string) string {
 	if len(pd.Position) == 0 || !b.Valid {
 		return ""
 	}
@@ -148,9 +214,10 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers 
 	return fmt.Sprintf(
 		`<svg id="track-plot" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet">`+
 			`<rect width="%d" height="%d" fill="#0a0a0a"></rect>`+
+			`<g id="track">%s</g>`+
 			`<g id="cars">%s</g>`+
 			`</svg>`,
-		svgW, svgH, svgW, svgH, cars.String(),
+		svgW, svgH, svgW, svgH, trackSVG, cars.String(),
 	)
 }
 
