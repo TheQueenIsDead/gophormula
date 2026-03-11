@@ -150,6 +150,24 @@ type Driver struct {
 
 type DriverList map[string]Driver
 
+// UnmarshalJSON handles live delta updates where F1 sends `false` instead of
+// a Driver object for entries that are being cleared from the list.
+func (dl *DriverList) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*dl = make(DriverList, len(raw))
+	for k, v := range raw {
+		var d Driver
+		if err := json.Unmarshal(v, &d); err != nil {
+			continue // skip non-object values (e.g. false)
+		}
+		(*dl)[k] = d
+	}
+	return nil
+}
+
 type DriverRaceInfoEntry struct {
 	RacingNumber  string `json:"RacingNumber"`
 	Position      string `json:"Position"`

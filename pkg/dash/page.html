@@ -28,6 +28,8 @@
     .session-btn { display: block; width: 100%; text-align: left; background: none; border: none; color: #ccc;
                    padding: .4rem .5rem; cursor: pointer; font: inherit; font-size: .8rem; border-radius: 3px; }
     .session-btn:hover { background: #1e1e1e; color: #fff; }
+    .session-btn-live { color: #e10600; border: 1px solid #3a0000; margin-bottom: .25rem; }
+    .session-btn-live:hover { background: #1a0000; color: #ff3320; }
 
     /* Main content */
     main   { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -77,7 +79,9 @@
   </header>
   <div class="layout">
     <aside id="sessions-aside" data-signals="{seek:''}">
-      <h2>Sessions</h2>
+      <h2>Live</h2>
+      <button class="session-btn session-btn-live" data-on:click="@post('/live')">&#9679; Connect to F1 Live Timing</button>
+      <h2 style="margin-top:.75rem">Replay</h2>
       <div style="padding:.25rem .25rem .5rem">
         <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:.3rem">Seek to</label>
         <input type="text" placeholder="e.g. 56m9s" data-bind="seek"

@@ -13,7 +13,6 @@ import (
 // TODO: Make this a properly generic interface
 type Transport interface {
 	Connect(host, token string, hubs []Hub) error
-	Handshake() error
 	Read() (Message, error)
 	Write([]byte) error
 }
@@ -84,18 +83,6 @@ func (t *WebsocketTransport) Connect(host, token string, hubs []Hub) error {
 }
 
 func (t *WebsocketTransport) Invoke() {}
-
-func (t *WebsocketTransport) Handshake() error {
-	b, _ := json.Marshal(HandshakeRequest{
-		Protocol: "json",
-		Version:  1,
-	})
-	// append record separator (0x1E)
-	b = append(b, RecordSeparator)
-	err := t.conn.WriteMessage(websocket.TextMessage, b)
-
-	return err
-}
 
 func (t *WebsocketTransport) Read() (Message, error) {
 	_, raw, err := t.conn.ReadMessage()

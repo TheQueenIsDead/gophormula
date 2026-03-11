@@ -28,6 +28,7 @@ func main() {
 	mux.HandleFunc("/", hub.Index)
 	mux.HandleFunc("/events", hub.Events)
 	mux.HandleFunc("/replay", hub.ReplayHandler())
+	mux.HandleFunc("/live", hub.LiveHandler())
 
 	slog.Info("listening", "addr", ":1234")
 	if err := http.ListenAndServe(":1234", mux); err != nil {

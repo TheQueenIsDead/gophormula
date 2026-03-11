@@ -43,12 +43,6 @@ func (nr NegotiationResponse) String() string {
 	return string(str)
 }
 
-// HandshakeRequest	Client	Sent by the client to agree on the message format.
-type HandshakeRequest struct {
-	Protocol string `json:"protocol"`
-	Version  int    `json:"version"`
-}
-
 // Invocation Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
 type InvocationRequest struct {
 	//I – invocation identifier – allows to match up responses with requests
@@ -60,6 +54,13 @@ type InvocationRequest struct {
 	Method    string        `json:"M"`
 	Arguments []interface{} `json:"A"`
 	I         interface{}   `json:"I"`
+}
+
+// ConnectedMessage is the first frame sent by a classic ASP.NET SignalR server
+// after the WebSocket connection is established. S:1 indicates success.
+type ConnectedMessage struct {
+	C string `json:"C"` // connection cursor
+	S int    `json:"S"` // 1 = connected
 }
 
 type InvocationResponse struct {
