@@ -1,4 +1,12 @@
 .idea/
+
+# Historic race downloads
 data/**/*.z.jsonStream
 data/**/*.jsonStream
 data/**/*.json
+
+# Binaries
+/historic
+/dash
+/live
+/replay
