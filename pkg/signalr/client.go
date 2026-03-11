@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 )
 
 const (
@@ -50,9 +49,7 @@ func WithAck(ack bool) Option {
 func NewClient(opts ...Option) *Client {
 
 	client := &Client{
-		log: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
+		log:     slog.Default(),
 		url:     "http://localhost:8080/signalr",
 		version: 1,
 		ack:     false,

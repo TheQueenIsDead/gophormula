@@ -6,7 +6,7 @@ import (
 	"html"
 	"html/template"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -126,7 +126,7 @@ func (h *Hub) Index(w http.ResponseWriter, r *http.Request) {
 		"Sessions": sessions,
 		"DataDir":  h.dataDir,
 	}); err != nil {
-		log.Println("template error:", err)
+		slog.Error("template error", "err", err)
 	}
 }
 
@@ -163,6 +163,6 @@ func SessionStarted(w http.ResponseWriter, r *http.Request, name string) {
 	sse := datastar.NewSSE(w, r)
 	fragment := fmt.Sprintf(`<span id="active-session">%s</span>`, html.EscapeString(name))
 	if err := sse.PatchElements(fragment); err != nil {
-		log.Println("SessionStarted patch error:", err)
+		slog.Warn("SessionStarted patch error", "err", err)
 	}
 }

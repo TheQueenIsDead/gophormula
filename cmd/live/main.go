@@ -3,10 +3,20 @@ package main
 import (
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/signalr"
-	"log"
+	"log/slog"
+	"os"
 )
 
+func initLogging() {
+	level := slog.LevelInfo
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		_ = level.UnmarshalText([]byte(v))
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
 func main() {
+	initLogging()
 	client := signalr.NewClient(
 		signalr.WithURL("https://livetiming.formula1.com/signalr"),
 	)
@@ -16,45 +26,46 @@ func main() {
 		livetiming.AllTopics(),
 	)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to connect", "err", err)
+		os.Exit(1)
 	}
 
-	log.Println("Waiting for messages...")
+	slog.Info("waiting for messages")
 	for {
 		select {
 		case msg := <-ch:
 			for _, data := range livetiming.ParseJSON(msg.Data()) {
 				switch v := data.(type) {
 				case *livetiming.Heartbeat:
-					log.Printf("[Heartbeat] Received at %v", v)
+					slog.Debug("heartbeat", "utc", v.Utc)
 				case *livetiming.CarData:
-					log.Printf("[CarData] Received for %d cars", len(v.Entries))
+					slog.Debug("car data", "cars", len(v.Entries))
 				case *livetiming.PositionData:
-					log.Printf("[PositionData] Received")
+					slog.Debug("position data")
 				case *livetiming.SessionInfo:
-					log.Printf("[SessionInfo] %s - %s", v.Meeting.Name, v.Name)
+					slog.Info("session info", "meeting", v.Meeting.Name, "session", v.Name)
 				case *livetiming.TimingData:
-					log.Printf("[TimingData] Received for %d lines", len(v.Lines))
+					slog.Debug("timing data", "drivers", len(v.Lines))
 				case *livetiming.TopThree:
-					log.Printf("[TopThree] Received with %d drivers", len(v.Lines))
+					slog.Debug("top three", "drivers", len(v.Lines))
 				case *livetiming.TimingStats:
-					log.Printf("[TimingStats] Received for %d lines", len(v.Lines))
+					slog.Debug("timing stats", "drivers", len(v.Lines))
 				case *livetiming.TimingAppData:
-					log.Printf("[TimingAppData] Received for %d lines", len(v.Lines))
+					slog.Debug("timing app data", "drivers", len(v.Lines))
 				case *livetiming.WeatherData:
-					log.Printf("[WeatherData] Air Temp: %s, Track Temp: %s", v.AirTemp, v.TrackTemp)
+					slog.Info("weather", "air", v.AirTemp, "track", v.TrackTemp)
 				case *livetiming.TrackStatus:
-					log.Printf("[TrackStatus] Status: %s - %s", v.Status, v.Message)
+					slog.Info("track status", "status", v.Status, "message", v.Message)
 				case *livetiming.DriverList:
-					log.Printf("[DriverList] Received for %d drivers", len(*v))
+					slog.Info("driver list", "drivers", len(*v))
 				case *livetiming.RaceControlMessages:
-					log.Printf("[RaceControl] Received %d new livetiming", len(v.Messages))
+					slog.Info("race control", "messages", len(v.Messages))
 				case *livetiming.SessionData:
-					log.Printf("[SessionData] Received with %d data points", len(v.Series))
+					slog.Debug("session data", "points", len(v.Series))
 				case *livetiming.LapCount:
-					log.Printf("[LapCount] Lap %d/%d", v.CurrentLap, v.TotalLaps)
+					slog.Info("lap count", "current", v.CurrentLap, "total", v.TotalLaps)
 				default:
-					log.Printf("Received unknown message type: %T: %s", data, v)
+					slog.Warn("unknown message type", "type", data)
 				}
 			}
 		}
