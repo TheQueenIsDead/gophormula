@@ -57,6 +57,8 @@ func main() {
 		panic(err)
 	}
 
+	// Race data is located at URL's like so:  "https://livetiming.formula1.com/static/2025/2025-07-06_British_Grand_Prix/2025-07-06_Race/"
+	// When saving data, strip "/static/" and store it in the given directory
 	err = os.MkdirAll(strings.ReplaceAll(out+base.Path, "static/", ""), 0750)
 	if err != nil {
 		panic(err)
@@ -69,6 +71,7 @@ func main() {
 		panic(err)
 	}
 
+	// Build up a list of files from feeds per the index
 	files := []*url.URL{base.JoinPath("Index.json")}
 	for _, feed := range index.GetFeeds() {
 		if feed.KeyFramePath != "" {
