@@ -45,8 +45,10 @@ function rafTick(now) {
             const elapsed = now - (targetAt[num] || now);
             const interval = estInterval[num] || 300;
 
-            // alpha 0→1: interpolate from current rendered position to target
-            const alpha = Math.min(elapsed / interval, 1.0);
+            // alpha 0→1 = interpolating to target; slight overshoot fills the gap
+            // before the next update. Starting from current (not old server target)
+            // means overshoot unwinds gradually rather than slingshotting.
+            const alpha = Math.min(elapsed / interval, 1.15);
             cur.x = prev.x + (target.x - prev.x) * alpha;
             cur.y = prev.y + (target.y - prev.y) * alpha;
 
