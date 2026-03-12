@@ -3,6 +3,7 @@ package frontend
 import (
 	"fmt"
 	"html"
+	"strings"
 	"sync"
 )
 
@@ -80,10 +81,16 @@ func (h *Hub) BroadcastScript(script string) {
 	}
 }
 
-// BroadcastTrack sends the circuit outline SVG fragment to #track-outline,
-// used for the initial track render before any position data arrives.
+// BroadcastTrack sets the circuit outline on #track-outline via script injection.
+// Direct innerHTML assignment on an SVG element preserves SVG namespace context,
+// whereas Datastar's PatchElements parses fragments as HTML (losing the namespace).
 func (h *Hub) BroadcastTrack(fragment string) {
-	h.send("track-outline", "inner", fragment)
+	if fragment == "" {
+		return
+	}
+	escaped := strings.ReplaceAll(fragment, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "`", "\\`")
+	h.BroadcastScript("document.getElementById('track-outline').innerHTML=`" + escaped + "`")
 }
 
 // BroadcastStatus replaces the inner HTML of the named status element.
