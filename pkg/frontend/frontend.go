@@ -27,10 +27,10 @@ type Frontend struct {
 	hub *Hub
 }
 
-func New(dataDir string) *Frontend {
+func New() *Frontend {
 	fe := &Frontend{
 		log: slog.Default(),
-		hub: NewHub(dataDir),
+		hub: NewHub(),
 	}
 
 	fe.tpl = template.Must(
@@ -58,7 +58,7 @@ func (fe *Frontend) Start(addr string) error {
 }
 
 func (fe *Frontend) Index(w http.ResponseWriter, r *http.Request) {
-	sessions := scanSessions(fe.hub.dataDir)
+	sessions := scanSessions("data")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := fe.tpl.ExecuteTemplate(w, "index", map[string]any{
 		"Sessions": sessions,
@@ -215,19 +215,20 @@ func (fe *Frontend) ReplayHandler() http.HandlerFunc {
 
 // Session represents a discoverable race session on disk.
 type Session struct {
-	Name string // relative path from dataDir, used as display label
+	Name string // display label (relative path from data/)
 	Path string // absolute path passed to the replay engine
 }
 
-// scanSessions walks dataDir and returns every directory containing Index.json.
-func scanSessions(dataDir string) []Session {
+// scanSessions walks the data/ directory and returns every subdirectory
+// containing an Index.json file.
+func scanSessions(root string) []Session {
 	var sessions []Session
-	filepath.WalkDir(dataDir, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
+	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
 		if err != nil || !d.IsDir() {
 			return nil
 		}
 		if _, err := os.Stat(filepath.Join(path, "Index.json")); err == nil {
-			rel, _ := filepath.Rel(dataDir, path)
+			rel, _ := filepath.Rel(root, path)
 			sessions = append(sessions, Session{Name: rel, Path: path})
 		}
 		return nil

@@ -10,13 +10,11 @@ import (
 type Hub struct {
 	mu      sync.Mutex
 	clients map[chan entry]struct{}
-	dataDir string
 }
 
-func NewHub(dataDir string) *Hub {
+func NewHub() *Hub {
 	return &Hub{
 		clients: make(map[chan entry]struct{}),
-		dataDir: dataDir,
 	}
 }
 
