@@ -64,9 +64,18 @@ func (h *Hub) Broadcast(ts, body string) {
 	h.send("log", "append", fragment)
 }
 
-// BroadcastCars replaces #plot-panel with a fresh SVG (avoids SVG namespace issues with innerHTML).
+// BroadcastCars replaces the inner HTML of #plot-panel with a full SVG.
+// Targeting the HTML parent (not the SVG element itself) ensures the browser
+// parses car elements in the correct SVG namespace context. Idiomorph diffs
+// the SVG children by id so CSS transitions can animate cx/cy in place.
 func (h *Hub) BroadcastCars(fragment string) {
 	h.send("plot-panel", "inner", fragment)
+}
+
+// BroadcastTrack sends the circuit outline SVG fragment to #track-outline,
+// used for the initial track render before any position data arrives.
+func (h *Hub) BroadcastTrack(fragment string) {
+	h.send("track-outline", "inner", fragment)
 }
 
 // BroadcastStatus replaces the inner HTML of the named status element.

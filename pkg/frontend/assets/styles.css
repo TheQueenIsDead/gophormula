@@ -26,6 +26,7 @@ h1     { color: #e10600; font-size: 1.2rem; letter-spacing: .05em; flex-shrink: 
 main   { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 #plot-panel { flex: 1; min-height: 0; border-bottom: 1px solid #222; background: #0a0a0a; overflow: hidden; }
 #track-plot { display: block; width: 100%; height: 100%; }
+.car-dot { transition: cx 300ms ease-out, cy 300ms ease-out, x 300ms ease-out, y 300ms ease-out; }
 #log-panel { height: 200px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; transition: height .2s ease; }
 #log-panel.collapsed { height: 28px; }
 #log-panel.collapsed #log { display: none; }

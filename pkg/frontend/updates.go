@@ -16,19 +16,18 @@ type Updater struct {
 	trackSVG string
 }
 
-func newUpdater(hub *Hub, bounds replay.PositionBounds, trackSVG string) *Updater {
+func newUpdater(hub *Hub) *Updater {
 	return &Updater{
-		hub:      hub,
-		Sess:     session.New(),
-		bounds:   bounds,
-		trackSVG: trackSVG,
+		hub:  hub,
+		Sess: session.New(),
 	}
 }
 
-// SetTrack updates the circuit bounds and SVG outline used for car position rendering.
+// SetTrack updates the circuit bounds and broadcasts the track outline to all clients.
 func (u *Updater) SetTrack(bounds replay.PositionBounds, svg string) {
 	u.bounds = bounds
 	u.trackSVG = svg
+	u.hub.BroadcastTrack(svg)
 }
 
 // Accumulate applies value to session state without pushing any UI updates.
@@ -51,7 +50,9 @@ func (u *Updater) FlushStatus() {
 func (u *Updater) Apply(value any, ts time.Time) {
 	// Position data: render car dots immediately, no log entry.
 	if pd, ok := value.(*livetiming.PositionData); ok {
-		u.hub.BroadcastCars(buildCarsSVG(pd, u.bounds, u.Sess.Drivers, u.trackSVG))
+		for _, frame := range pd.Position {
+			u.hub.BroadcastCars(buildCarsSVG(frame, u.bounds, u.Sess.Drivers, u.trackSVG))
+		}
 		u.hub.BroadcastStatus("status-time", ts.Format("15:04:05"))
 		return
 	}

@@ -118,7 +118,7 @@ func (fe *Frontend) LiveHandler() http.HandlerFunc {
 
 		go func() {
 			fe.hub.send("active-session", "inner", "Live")
-			updater := newUpdater(fe.hub, replay.PositionBounds{}, "")
+			updater := newUpdater(fe.hub)
 			var circuitFetched bool
 
 			for msg := range ch {
@@ -178,7 +178,8 @@ func (fe *Frontend) ReplayHandler() http.HandlerFunc {
 
 		go func() {
 			fe.hub.send("active-session", "inner", filepath.Base(path))
-			updater := newUpdater(fe.hub, bounds, trackSVG)
+			updater := newUpdater(fe.hub)
+			updater.SetTrack(bounds, trackSVG)
 			catchingUp := true
 
 			for m := range ch {

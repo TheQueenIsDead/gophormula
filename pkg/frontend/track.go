@@ -78,15 +78,14 @@ func buildTrackSVGFromMap(cm *livetiming.CircuitMap, b replay.PositionBounds) st
 	)
 }
 
-// buildCarsSVG converts a PositionData snapshot into a full SVG element with
-// car positions normalised to the fixed svgW×svgH canvas using the
-// pre-scanned circuit bounds. drivers provides team colours and TLAs.
-// trackSVG is the pre-built circuit outline fragment from buildTrackSVG.
-func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers map[string]livetiming.Driver, trackSVG string) string {
-	if len(pd.Position) == 0 || !b.Valid {
+// buildCarsSVG converts a single PositionTimestamp frame into a full SVG element.
+// Targeting the HTML parent (#plot-panel) with a complete <svg> ensures the browser
+// parses car elements in the correct SVG namespace. Each car has a stable id so
+// idiomorph updates cx/cy attributes in place, letting CSS transitions animate movement.
+func buildCarsSVG(frame livetiming.PositionTimestamp, b replay.PositionBounds, drivers map[string]livetiming.Driver, trackSVG string) string {
+	if !b.Valid {
 		return ""
 	}
-	last := pd.Position[len(pd.Position)-1]
 	rangeX := b.MaxX - b.MinX
 	rangeY := b.MaxY - b.MinY
 	if rangeX == 0 {
@@ -96,13 +95,12 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers 
 		rangeY = 1
 	}
 
-	const pad = 40 // pixel padding inside the canvas
+	const pad = 40
 	usableW := svgW - 2*pad
 	usableH := svgH - 2*pad
 
 	var cars strings.Builder
-	for num, e := range last.Entries {
-		// normalise: SVG Y is flipped relative to F1 Y
+	for num, e := range frame.Entries {
 		sx := float64(pad) + float64(e.X-b.MinX)/float64(rangeX)*float64(usableW)
 		sy := float64(pad) + (1.0-float64(e.Y-b.MinY)/float64(rangeY))*float64(usableH)
 		dotColor := "#ffffff"
@@ -120,14 +118,15 @@ func buildCarsSVG(pd *livetiming.PositionData, b replay.PositionBounds, drivers 
 			textColor = "#999999"
 		}
 		fmt.Fprintf(&cars,
-			`<circle cx="%.1f" cy="%.1f" r="9" fill="%s" stroke="#111" stroke-width="1"></circle>`+
-				`<text x="%.1f" y="%.1f" text-anchor="middle" font-size="7" fill="%s" font-family="monospace" font-weight="bold">%s</text>`,
-			sx, sy, dotColor, sx, sy+2.5, textColor, html.EscapeString(label))
+			`<circle id="car-%s" class="car-dot" cx="%.1f" cy="%.1f" r="9" fill="%s" stroke="#111" stroke-width="1"></circle>`+
+				`<text id="car-label-%s" class="car-dot" x="%.1f" y="%.1f" text-anchor="middle" font-size="7" fill="%s" font-family="monospace" font-weight="bold">%s</text>`,
+			num, sx, sy, dotColor,
+			num, sx, sy+2.5, textColor, html.EscapeString(label))
 	}
 	return fmt.Sprintf(
 		`<svg id="track-plot" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet">`+
 			`<rect width="%d" height="%d" fill="#0a0a0a"></rect>`+
-			`<g id="track">%s</g>`+
+			`<g id="track-outline">%s</g>`+
 			`<g id="cars">%s</g>`+
 			`</svg>`,
 		svgW, svgH, svgW, svgH, trackSVG, cars.String(),
