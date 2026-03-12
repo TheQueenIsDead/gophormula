@@ -1,0 +1,27 @@
+{{define "index"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Gophormula</title>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+    <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body data-init="@get('/events')" data-signals="{seek:'',session:''}">
+<header>
+    <h1>Gophormula</h1>
+    {{template "sessions" .}}
+    <span id="active-session">no session</span>
+    {{template "status" .}}
+</header>
+<div class="layout">
+    <main>
+        {{template "track" .}}
+        {{template "logs" .}}
+    </main>
+    {{template "standings" .}}
+</div>
+<script src="/assets/app.js"></script>
+</body>
+</html>
+{{end}}
