@@ -530,7 +530,7 @@ type TyreStint struct {
 }
 
 type TyreStintSeries struct {
-	Stints map[string][]TyreStint `json:"Stints"`
+	Stints map[string]FlexSlice[TyreStint] `json:"Stints"`
 }
 
 type WeatherData struct {
