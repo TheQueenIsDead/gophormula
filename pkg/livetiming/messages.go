@@ -551,3 +551,67 @@ type WeatherDataPoint struct {
 type WeatherDataSeries struct {
 	Series FlexSlice[WeatherDataPoint] `json:"Series"`
 }
+
+func (h *Heartbeat) String() string {
+	return fmt.Sprintf("heartbeat utc=%s", h.Utc.Format("15:04:05"))
+}
+
+func (c *CarData) String() string {
+	return fmt.Sprintf("car data cars=%d", len(c.Entries))
+}
+
+func (p *PositionData) String() string {
+	return fmt.Sprintf("position data entries=%d", len(p.Position))
+}
+
+func (s *SessionInfo) String() string {
+	return fmt.Sprintf("session info meeting=%s session=%s", s.Meeting.Name, s.Name)
+}
+
+func (t *TimingData) String() string {
+	return fmt.Sprintf("timing data drivers=%d", len(t.Lines))
+}
+
+func (t *TopThree) String() string {
+	return fmt.Sprintf("top three drivers=%d", len(t.Lines))
+}
+
+func (t *TimingStats) String() string {
+	return fmt.Sprintf("timing stats drivers=%d", len(t.Lines))
+}
+
+func (t *TimingAppData) String() string {
+	return fmt.Sprintf("timing app data drivers=%d", len(t.Lines))
+}
+
+func (w *WeatherData) String() string {
+	return fmt.Sprintf("weather air=%s°C track=%s°C wind=%skm/h rain=%s", w.AirTemp, w.TrackTemp, w.WindSpeed, w.Rainfall)
+}
+
+func (t *TrackStatus) String() string {
+	return fmt.Sprintf("track status %s %s", t.Status, t.Message)
+}
+
+func (d *DriverList) String() string {
+	return fmt.Sprintf("driver list drivers=%d", len(*d))
+}
+
+func (r *RaceControlMessages) String() string {
+	return fmt.Sprintf("race control messages=%d", len(r.Messages))
+}
+
+func (s *SessionData) String() string {
+	return fmt.Sprintf("session data points=%d", len(s.Series))
+}
+
+func (l *LapCount) String() string {
+	return fmt.Sprintf("lap count current=%d total=%d", l.CurrentLap, l.TotalLaps)
+}
+
+func (e *ExtrapolatedClock) String() string {
+	return fmt.Sprintf("clock remaining=%s extrapolating=%v", e.Remaining, e.Extrapolating)
+}
+
+func (s *SessionStatus) String() string {
+	return fmt.Sprintf("session status %s", s.Status)
+}
