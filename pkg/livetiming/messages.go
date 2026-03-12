@@ -615,3 +615,63 @@ func (e *ExtrapolatedClock) String() string {
 func (s *SessionStatus) String() string {
 	return fmt.Sprintf("session status %s", s.Status)
 }
+
+func (t *TlaRcm) String() string {
+	return fmt.Sprintf("tla rcm %s", t.Message)
+}
+
+func (t *TeamRadio) String() string {
+	if len(t.Captures) > 0 {
+		last := t.Captures[fmt.Sprintf("%d", len(t.Captures)-1)]
+		return fmt.Sprintf("team radio #%s", last.RacingNumber)
+	}
+	return "team radio"
+}
+
+func (a *ArchiveStatus) String() string {
+	return fmt.Sprintf("archive status %s", a.Status)
+}
+
+func (a *AudioStreams) String() string {
+	return fmt.Sprintf("audio streams streams=%d", len(a.Streams))
+}
+
+func (c *ChampionshipPrediction) String() string {
+	return fmt.Sprintf("championship prediction drivers=%d teams=%d", len(c.Drivers), len(c.Teams))
+}
+
+func (c *ContentStreams) String() string {
+	return fmt.Sprintf("content streams streams=%d", len(c.Streams))
+}
+
+func (c *CurrentTyres) String() string {
+	return fmt.Sprintf("current tyres cars=%d", len(c.Tyres))
+}
+
+func (d DriverRaceInfo) String() string {
+	return fmt.Sprintf("driver race info drivers=%d", len(d))
+}
+
+func (d *DriverScore) String() string {
+	return fmt.Sprintf("driver score scores=%d", len(d.Scores))
+}
+
+func (l LapSeries) String() string {
+	return fmt.Sprintf("lap series drivers=%d", len(l))
+}
+
+func (p *PitLaneTimeCollection) String() string {
+	return "pit lane time collection"
+}
+
+func (s *SPFeed) String() string {
+	return "sp feed"
+}
+
+func (t *TyreStintSeries) String() string {
+	return fmt.Sprintf("tyre stint series drivers=%d", len(t.Stints))
+}
+
+func (w *WeatherDataSeries) String() string {
+	return fmt.Sprintf("weather data series points=%d", len(w.Series))
+}
