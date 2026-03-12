@@ -8,6 +8,7 @@ import (
 	"gophormula/pkg/replay"
 	"html"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,4 +193,31 @@ func formatMessage(msg any) string {
 		return s.String()
 	}
 	return fmt.Sprintf("%v", msg)
+}
+
+// boundsFromCircuitMap derives PositionBounds from a Multiviewer circuit map.
+// The circuit map and F1 position data share the same coordinate space, so the
+// circuit extent can normalise live car positions onto the SVG canvas.
+func boundsFromCircuitMap(cm *livetiming.CircuitMap) replay.PositionBounds {
+	if cm == nil || len(cm.X) == 0 {
+		return replay.PositionBounds{}
+	}
+	minX, maxX := math.MaxInt, math.MinInt
+	minY, maxY := math.MaxInt, math.MinInt
+	for i := range cm.X {
+		x, y := int(math.Round(cm.X[i])), int(math.Round(cm.Y[i]))
+		if x < minX {
+			minX = x
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if y > maxY {
+			maxY = y
+		}
+	}
+	return replay.PositionBounds{MinX: minX, MaxX: maxX, MinY: minY, MaxY: maxY, Valid: true}
 }
