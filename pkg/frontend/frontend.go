@@ -4,7 +4,7 @@ import (
 	"embed"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
-	"gophormula/pkg/session"
+	"gophormula/pkg/signalr"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -94,6 +94,63 @@ func (fe *Frontend) Events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// LiveHandler connects to the F1 live timing SignalR feed and streams updates
+// to all connected SSE clients.
+func (fe *Frontend) LiveHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		client := signalr.NewClient(
+			signalr.WithURL("https://livetiming.formula1.com/signalr"),
+		)
+		ch, err := client.Connect([]signalr.Hub{"Streaming"}, livetiming.AllTopics())
+		if err != nil {
+			slog.Error("live: SignalR connect failed", "err", err)
+			http.Error(w, "could not connect to F1 live timing: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		slog.Info("live: connected to F1 SignalR")
+
+		// Respond with 204 so Datastar does not treat this as an SSE stream.
+		// Sending SSE on the POST response causes Datastar to briefly drop the
+		// persistent /events connection, resulting in missed snapshot updates.
+		// The goroutine pushes the active-session label through /events instead.
+		w.WriteHeader(http.StatusNoContent)
+
+		go func() {
+			fe.hub.send("active-session", "inner", "Live")
+			updater := newUpdater(fe.hub, replay.PositionBounds{}, "")
+			var circuitFetched bool
+
+			for msg := range ch {
+				data := msg.Data()
+				if data == nil {
+					continue
+				}
+				for _, parsed := range livetiming.ParseJSON(data) {
+					now := time.Now()
+					updater.Apply(parsed, now)
+
+					// Fetch circuit map once after the first SessionInfo is applied.
+					if _, ok := parsed.(*livetiming.SessionInfo); ok && !circuitFetched {
+						circuitFetched = true
+						si := updater.Sess.Info
+						year := si.StartDate.Year()
+						if year == 0 {
+							year = now.Year()
+						}
+						if cm, err := livetiming.FetchCircuitMap(si.Meeting.Circuit.Key, year); err == nil {
+							bounds := boundsFromCircuitMap(cm)
+							updater.SetTrack(bounds, buildTrackSVGFromMap(cm, bounds))
+						} else {
+							slog.Warn("live: circuit map fetch failed", "err", err)
+						}
+					}
+				}
+			}
+			slog.Info("live: SignalR connection closed")
+		}()
+	}
+}
+
 // ReplayHandler returns an HTTP handler that starts a session replay and
 // streams updates to all connected SSE clients.
 func (fe *Frontend) ReplayHandler() http.HandlerFunc {
@@ -117,71 +174,41 @@ func (fe *Frontend) ReplayHandler() http.HandlerFunc {
 		bounds := r2.ScanPositionBounds()
 		trackSVG := fetchAndBuildTrackSVG(path, bounds)
 		ch := r2.StartAndSubscribe()
+
 		go func() {
 			fe.hub.send("active-session", "inner", filepath.Base(path))
-
-			sess := session.New()
+			updater := newUpdater(fe.hub, bounds, trackSVG)
 			catchingUp := true
+
 			for m := range ch {
 				msg := m.(replay.Message)
-				// Always accumulate state even during catch-up.
-				// TimingData keyframes (nil Timestamp) are skipped to avoid contaminating
-				// standings with the full-state dump; all other types are always applied.
-				var rerender bool
-				switch msg.Value.(type) {
-				case *livetiming.TimingData:
-					if msg.Timestamp != nil {
-						sess.Apply(msg.Value)
-						rerender = true
-					}
-				case *livetiming.DriverList:
-					sess.Apply(msg.Value)
-					rerender = true
-				default:
-					sess.Apply(msg.Value)
-				}
-				// During catch-up, skip all UI updates.
-				if msg.Catchup {
+
+				// TimingData keyframes (nil Timestamp) are the initial full-state dump;
+				// skip them entirely to avoid contaminating standings.
+				if _, ok := msg.Value.(*livetiming.TimingData); ok && msg.Timestamp == nil {
 					continue
 				}
+
+				if msg.Catchup {
+					updater.Accumulate(msg.Value)
+					continue
+				}
+
 				// First real-time message: flush accumulated status and standings.
 				if catchingUp {
 					catchingUp = false
-					flushStatus(sess, fe.hub)
-					if s := renderStandings(sess); s != "" {
-						fe.hub.send("standings-panel", "inner", s)
-					}
+					updater.FlushStatus()
 				}
+
+				ts := time.Now()
 				if msg.Timestamp != nil {
-					fe.hub.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
+					ts = *msg.Timestamp
 				}
-				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
-					fe.hub.BroadcastCars(buildCarsSVG(pd, bounds, sess.Drivers, trackSVG))
-					continue
-				}
-				if rerender {
-					if s := renderStandings(sess); s != "" {
-						fe.hub.send("standings-panel", "inner", s)
-					}
-				}
-				if msg.Timestamp != nil {
-					updateStatus(fe.hub, msg.Value)
-				}
-				body := formatMessage(msg.Value)
-				if body == "" {
-					continue
-				}
-				ts := "--:--:--"
-				if msg.Timestamp != nil {
-					ts = msg.Timestamp.Format("15:04:05")
-				}
-				fe.hub.Broadcast(ts, body)
+				updater.Apply(msg.Value, ts)
 			}
 		}()
 
 		// Return 204 so Datastar does not treat this as an SSE stream.
-		// Sending SSE on the POST response causes Datastar to briefly drop the
-		// persistent /events connection. The goroutine pushes updates through /events instead.
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
