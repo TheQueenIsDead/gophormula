@@ -1,4 +1,4 @@
-package dash
+package frontend
 
 import (
 	"bytes"
@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"gophormula/pkg/livetiming"
 	"gophormula/pkg/replay"
-	"gophormula/pkg/session"
 	"html"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,93 +16,6 @@ import (
 
 // svgW and svgH are the fixed dimensions of the track SVG canvas.
 const svgW, svgH = 800, 600
-
-// ReplayHandler returns an HTTP handler that starts a session replay and
-// streams updates to all connected SSE clients.
-func (h *Hub) ReplayHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Query().Get("path")
-		if path == "" {
-			http.Error(w, "missing path", http.StatusBadRequest)
-			return
-		}
-
-		r2 := replay.New()
-		if err := r2.ParseGlob(filepath.Join(path, "*")); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if seekStr := r.URL.Query().Get("seek"); seekStr != "" {
-			if d, err := time.ParseDuration(seekStr); err == nil {
-				r2.SeekTo(d)
-			}
-		}
-		bounds := r2.ScanPositionBounds()
-		trackSVG := fetchAndBuildTrackSVG(path, bounds)
-		ch := r2.StartAndSubscribe()
-		go func() {
-			sess := session.New()
-			catchingUp := true
-			for m := range ch {
-				msg := m.(replay.Message)
-				// Always accumulate state even during catch-up.
-				// TimingData keyframes (nil Timestamp) are skipped to avoid contaminating
-				// standings with the full-state dump; all other types are always applied.
-				var rerender bool
-				switch msg.Value.(type) {
-				case *livetiming.TimingData:
-					if msg.Timestamp != nil {
-						sess.Apply(msg.Value)
-						rerender = true
-					}
-				case *livetiming.DriverList:
-					sess.Apply(msg.Value)
-					rerender = true
-				default:
-					sess.Apply(msg.Value)
-				}
-				// During catch-up, skip all UI updates.
-				if msg.Catchup {
-					continue
-				}
-				// First real-time message: flush accumulated status and standings.
-				if catchingUp {
-					catchingUp = false
-					flushStatus(sess, h)
-					if s := renderStandings(sess); s != "" {
-						h.send("standings-panel", "inner", s)
-					}
-				}
-				if msg.Timestamp != nil {
-					h.BroadcastStatus("status-time", msg.Timestamp.Format("15:04:05"))
-				}
-				if pd, ok := msg.Value.(*livetiming.PositionData); ok {
-					h.BroadcastCars(buildCarsSVG(pd, bounds, sess.Drivers, trackSVG))
-					continue
-				}
-				if rerender {
-					if s := renderStandings(sess); s != "" {
-						h.send("standings-panel", "inner", s)
-					}
-				}
-				if msg.Timestamp != nil {
-					updateStatus(h, msg.Value)
-				}
-				body := formatMessage(msg.Value)
-				if body == "" {
-					continue
-				}
-				ts := "--:--:--"
-				if msg.Timestamp != nil {
-					ts = msg.Timestamp.Format("15:04:05")
-				}
-				h.Broadcast(ts, body)
-			}
-		}()
-
-		SessionStarted(w, r, filepath.Base(path))
-	}
-}
 
 // fetchAndBuildTrackSVG reads SessionInfo.json from the session directory,
 // fetches the circuit map from the Multiviewer API, and returns an SVG polyline

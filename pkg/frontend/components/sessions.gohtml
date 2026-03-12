@@ -1,0 +1,14 @@
+{{define "sessions"}}
+<div id="session-picker">
+    <select id="session-select"
+            data-bind="session"
+            data-on:change="$session === 'live' ? @post('/live') : ($session !== '' ? @post('/replay?path='+$session+'&seek='+$seek) : null)">
+        <option value="">— select session —</option>
+        <option value="live">&#9679; Live Timing</option>
+        {{range .Sessions}}
+            <option value="{{.Path | urlEncode}}">{{.Name}}</option>
+        {{end}}
+    </select>
+    <input id="seek-input" type="text" placeholder="seek e.g. 56m9s" data-bind="seek">
+</div>
+{{end}}

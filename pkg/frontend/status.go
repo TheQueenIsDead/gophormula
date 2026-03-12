@@ -1,4 +1,4 @@
-package dash
+package frontend
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package dash
+package frontend
 
 import (
 	"gophormula/pkg/livetiming"
@@ -13,7 +13,7 @@ import (
 
 // LiveHandler connects to the F1 live timing SignalR feed and streams updates
 // to all connected SSE clients.
-func (h *Hub) LiveHandler() http.HandlerFunc {
+func (fe *Frontend) LiveHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		client := signalr.NewClient(
 			signalr.WithURL("https://livetiming.formula1.com/signalr"),
@@ -33,7 +33,7 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 
 		go func() {
-			h.send("active-session", "inner", "Live")
+			fe.hub.send("active-session", "inner", "Live")
 
 			sess := session.New()
 			var bounds replay.PositionBounds
@@ -50,8 +50,8 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 
 					// Position data: render car dots immediately.
 					if pd, ok := parsed.(*livetiming.PositionData); ok {
-						h.BroadcastCars(buildCarsSVG(pd, bounds, sess.Drivers, trackSVG))
-						h.BroadcastStatus("status-time", now.Format("15:04:05"))
+						fe.hub.BroadcastCars(buildCarsSVG(pd, bounds, sess.Drivers, trackSVG))
+						fe.hub.BroadcastStatus("status-time", now.Format("15:04:05"))
 						continue
 					}
 
@@ -71,9 +71,9 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 								slog.Warn("live: circuit map fetch failed", "err", err)
 							}
 						}
-						updateStatus(h, parsed)
+						updateStatus(fe.hub, parsed)
 						if body := formatMessage(parsed); body != "" {
-							h.Broadcast(now.Format("15:04:05"), body)
+							fe.hub.Broadcast(now.Format("15:04:05"), body)
 						}
 						continue
 					}
@@ -88,14 +88,14 @@ func (h *Hub) LiveHandler() http.HandlerFunc {
 
 					if rerender {
 						if s := renderStandings(sess); s != "" {
-							h.send("standings-panel", "inner", s)
+							fe.hub.send("standings-panel", "inner", s)
 						}
 					}
-					updateStatus(h, parsed)
-					h.BroadcastStatus("status-time", now.Format("15:04:05"))
+					updateStatus(fe.hub, parsed)
+					fe.hub.BroadcastStatus("status-time", now.Format("15:04:05"))
 
 					if body := formatMessage(parsed); body != "" {
-						h.Broadcast(now.Format("15:04:05"), body)
+						fe.hub.Broadcast(now.Format("15:04:05"), body)
 					}
 				}
 			}

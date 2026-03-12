@@ -1,9 +1,9 @@
 package main
 
 import (
-	"gophormula/pkg/dash"
+	"gophormula/pkg/frontend"
+	"log"
 	"log/slog"
-	"net/http"
 	"os"
 )
 
@@ -22,17 +22,9 @@ func main() {
 		dataDir = os.Args[1]
 	}
 
-	hub := dash.NewHub(dataDir)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", hub.Index)
-	mux.HandleFunc("/events", hub.Events)
-	mux.HandleFunc("/replay", hub.ReplayHandler())
-	mux.HandleFunc("/live", hub.LiveHandler())
-
-	slog.Info("listening", "addr", ":1234")
-	if err := http.ListenAndServe(":1234", mux); err != nil {
-		slog.Error("server error", "err", err)
-		os.Exit(1)
+	dash := frontend.New(dataDir)
+	if err := dash.Start(":1234"); err != nil {
+		log.Fatal(err)
 	}
+
 }

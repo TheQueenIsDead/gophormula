@@ -1,0 +1,6 @@
+{{define "logs"}}
+<div id="log-panel">
+    <h2 onclick="(function(){var p=document.getElementById('log-panel');p.classList.toggle('collapsed');document.getElementById('log-toggle').textContent=p.classList.contains('collapsed')?'▲':'▼'})()">Log<span id="log-toggle">▼</span></h2>
+    <div id="log"></div>
+</div>
+{{end}}
