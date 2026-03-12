@@ -17,14 +17,7 @@ func initLogging() {
 
 func main() {
 	initLogging()
-	dataDir := "data"
-	if len(os.Args) >= 2 {
-		dataDir = os.Args[1]
-	}
-
-	dash := frontend.New(dataDir)
-	if err := dash.Start(":1234"); err != nil {
+	if err := frontend.New().Start(":1234"); err != nil {
 		log.Fatal(err)
 	}
-
 }
