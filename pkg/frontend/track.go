@@ -15,6 +15,15 @@ import (
 	"time"
 )
 
+// carDot is the JSON payload sent to the client for a single car.
+type carDot struct {
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Color string  `json:"color"`
+	Label string  `json:"label"`
+	Off   bool    `json:"off"`
+}
+
 // svgW and svgH are the fixed dimensions of the track SVG canvas.
 const svgW, svgH = 800, 600
 
@@ -78,11 +87,10 @@ func buildTrackSVGFromMap(cm *livetiming.CircuitMap, b replay.PositionBounds) st
 	)
 }
 
-// buildCarsSVG converts a single PositionTimestamp frame into a full SVG element.
-// Targeting the HTML parent (#plot-panel) with a complete <svg> ensures the browser
-// parses car elements in the correct SVG namespace. Each car has a stable id so
-// idiomorph updates cx/cy attributes in place, letting CSS transitions animate movement.
-func buildCarsSVG(frame livetiming.PositionTimestamp, b replay.PositionBounds, drivers map[string]livetiming.Driver, trackSVG string) string {
+// buildCarsScript converts a single PositionTimestamp frame into a JavaScript
+// call to updateCarTargets({...}) with normalised SVG canvas coordinates.
+// The client-side rAF loop interpolates smoothly toward the new targets.
+func buildCarsScript(frame livetiming.PositionTimestamp, b replay.PositionBounds, drivers map[string]livetiming.Driver) string {
 	if !b.Valid {
 		return ""
 	}
@@ -99,38 +107,25 @@ func buildCarsSVG(frame livetiming.PositionTimestamp, b replay.PositionBounds, d
 	usableW := svgW - 2*pad
 	usableH := svgH - 2*pad
 
-	var cars strings.Builder
+	cars := make(map[string]carDot, len(frame.Entries))
 	for num, e := range frame.Entries {
 		sx := float64(pad) + float64(e.X-b.MinX)/float64(rangeX)*float64(usableW)
 		sy := float64(pad) + (1.0-float64(e.Y-b.MinY)/float64(rangeY))*float64(usableH)
-		dotColor := "#ffffff"
-		if e.Status == "OffTrack" {
-			dotColor = "#555555"
-		} else if d, ok := drivers[num]; ok && d.TeamColour != "" {
-			dotColor = "#" + d.TeamColour
+		color := "#ffffff"
+		if d, ok := drivers[num]; ok && d.TeamColour != "" {
+			color = "#" + d.TeamColour
 		}
 		label := num
 		if d, ok := drivers[num]; ok && d.Tla != "" {
 			label = d.Tla
 		}
-		textColor := "#111111"
-		if e.Status == "OffTrack" {
-			textColor = "#999999"
-		}
-		fmt.Fprintf(&cars,
-			`<circle id="car-%s" class="car-dot" cx="%.1f" cy="%.1f" r="9" fill="%s" stroke="#111" stroke-width="1"></circle>`+
-				`<text id="car-label-%s" class="car-dot" x="%.1f" y="%.1f" text-anchor="middle" font-size="7" fill="%s" font-family="monospace" font-weight="bold">%s</text>`,
-			num, sx, sy, dotColor,
-			num, sx, sy+2.5, textColor, html.EscapeString(label))
+		cars[num] = carDot{X: sx, Y: sy, Color: color, Label: html.EscapeString(label), Off: e.Status == "OffTrack"}
 	}
-	return fmt.Sprintf(
-		`<svg id="track-plot" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet">`+
-			`<rect width="%d" height="%d" fill="#0a0a0a"></rect>`+
-			`<g id="track-outline">%s</g>`+
-			`<g id="cars">%s</g>`+
-			`</svg>`,
-		svgW, svgH, svgW, svgH, trackSVG, cars.String(),
-	)
+	data, err := json.Marshal(cars)
+	if err != nil {
+		return ""
+	}
+	return "updateCarTargets(" + string(data) + ")"
 }
 
 // updateStatus pushes live values to the status bar elements for the message

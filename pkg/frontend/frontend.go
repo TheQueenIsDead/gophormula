@@ -80,6 +80,12 @@ func (fe *Frontend) Events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			if e.isScript {
+				if err := sse.ExecuteScript(e.fragment); err != nil {
+					return
+				}
+				continue
+			}
 			var modeOpt datastar.PatchElementOption
 			if e.mode == "append" {
 				modeOpt = datastar.WithModeAppend()
