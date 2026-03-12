@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
@@ -229,9 +230,25 @@ func scanSessions(root string) []Session {
 		}
 		if _, err := os.Stat(filepath.Join(path, "Index.json")); err == nil {
 			rel, _ := filepath.Rel(root, path)
-			sessions = append(sessions, Session{Name: rel, Path: path})
+			sessions = append(sessions, Session{Name: formatSessionName(rel), Path: path})
 		}
 		return nil
 	})
 	return sessions
+}
+
+// formatSessionName converts a relative session path into a human-readable label.
+// e.g. "2021/2021-04-18_Emilia_Romagna_Grand_Prix/2021-04-18_Race"
+//
+//	→ "2021 Emilia Romagna Grand Prix Race"
+func formatSessionName(rel string) string {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for i, p := range parts {
+		// Strip leading YYYY-MM-DD_ date prefix if present.
+		if len(p) > 11 && p[4] == '-' && p[7] == '-' && p[10] == '_' {
+			p = p[11:]
+		}
+		parts[i] = strings.ReplaceAll(p, "_", " ")
+	}
+	return strings.Join(parts, " ")
 }
