@@ -33,12 +33,12 @@ func (h *Hub) unsubscribe(ch chan entry) {
 	close(ch)
 }
 
-// entry is a generic DOM patch: replace the inner HTML of selector with fragment,
-// or append to it when mode is "append".
+// entry is either a DOM patch (selector+mode+fragment) or a script execution (isScript=true, fragment=script).
 type entry struct {
 	selector string
 	mode     string // "append" or "inner"
 	fragment string
+	isScript bool
 }
 
 func (h *Hub) send(selector, mode, fragment string) {
@@ -64,12 +64,20 @@ func (h *Hub) Broadcast(ts, body string) {
 	h.send("log", "append", fragment)
 }
 
-// BroadcastCars replaces the inner HTML of #plot-panel with a full SVG.
-// Targeting the HTML parent (not the SVG element itself) ensures the browser
-// parses car elements in the correct SVG namespace context. Idiomorph diffs
-// the SVG children by id so CSS transitions can animate cx/cy in place.
-func (h *Hub) BroadcastCars(fragment string) {
-	h.send("plot-panel", "inner", fragment)
+// BroadcastScript executes a JavaScript snippet on all connected clients via
+// Datastar's datastar-execute-script SSE event.
+func (h *Hub) BroadcastScript(script string) {
+	if script == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients {
+		select {
+		case ch <- entry{fragment: script, isScript: true}:
+		default:
+		}
+	}
 }
 
 // BroadcastTrack sends the circuit outline SVG fragment to #track-outline,

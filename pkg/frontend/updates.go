@@ -10,10 +10,9 @@ import (
 // Updater holds session state and pushes DOM patches to connected clients
 // as messages arrive from either the replay engine or the live SignalR feed.
 type Updater struct {
-	hub      *Hub
-	Sess     *session.Session
-	bounds   replay.PositionBounds
-	trackSVG string
+	hub    *Hub
+	Sess   *session.Session
+	bounds replay.PositionBounds
 }
 
 func newUpdater(hub *Hub) *Updater {
@@ -26,7 +25,6 @@ func newUpdater(hub *Hub) *Updater {
 // SetTrack updates the circuit bounds and broadcasts the track outline to all clients.
 func (u *Updater) SetTrack(bounds replay.PositionBounds, svg string) {
 	u.bounds = bounds
-	u.trackSVG = svg
 	u.hub.BroadcastTrack(svg)
 }
 
@@ -50,8 +48,10 @@ func (u *Updater) FlushStatus() {
 func (u *Updater) Apply(value any, ts time.Time) {
 	// Position data: render car dots immediately, no log entry.
 	if pd, ok := value.(*livetiming.PositionData); ok {
-		for _, frame := range pd.Position {
-			u.hub.BroadcastCars(buildCarsSVG(frame, u.bounds, u.Sess.Drivers, u.trackSVG))
+		if n := len(pd.Position); n > 0 {
+			if s := buildCarsScript(pd.Position[n-1], u.bounds, u.Sess.Drivers); s != "" {
+				u.hub.BroadcastScript(s)
+			}
 		}
 		u.hub.BroadcastStatus("status-time", ts.Format("15:04:05"))
 		return
